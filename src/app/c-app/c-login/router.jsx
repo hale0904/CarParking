@@ -1,4 +1,4 @@
-import Login001  from './pages/login001-admin/login001-admin.component';
+import Login001 from './pages/login001-admin/login001-admin.page';
 import { Navigate } from 'react-router-dom';
 
 export const authRoutes = [
