@@ -6,66 +6,70 @@ import slider2 from '~/assets/slider2.jpg';
 import slider3 from '~/assets/slider3.png';
 import logo from '~/assets/smart_parking_logo.png';
 import { Button, Form, Carousel } from '../../../../c-lib/index';
-import { login } from '../../shared/service/login.service';
-import { Account } from '../../shared/dtos/Account.dto';
+import LoginService from '../../shared/service/login.service';
 
 function Login001() {
-  const [account, setAccount] = useState({ ...login });
   const navigate = useNavigate();
 
+  // state
+  const [account, setAccount] = useState({
+    email: '',
+    password: '',
+  });
+
   const handleChange = (e) => {
-    setAccount({
-      ...account,
-      [e.target.name]: e.target.value,
-    });
+    const { name, value } = e.target;
+    setAccount((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   const handleLogin = async () => {
     try {
-      const res = await login(account);
-      console.log(res);
+      const res = await LoginService(account);
 
-      localStorage.setItem('token', res.token);
+      localStorage.setItem('accessToken', res.accessToken);
+      localStorage.setItem('refreshToken', res.refreshToken);
+
       alert('Đăng nhập thành công');
       navigate('/dashboard');
     } catch (err) {
-      alert(err.message);
+      alert(err?.response?.data?.message || 'Đăng nhập thất bại');
     }
   };
 
   return (
     <div className="login-container">
+      {/* LEFT */}
       <div className="login-left">
-        <Carousel
-          fade
-          interval={3000} // 3s tự chuyển
-          pause={false} // hover không dừng
-          controls={false} // ẩn nút
-          indicators={true}
-        >
+        <Carousel fade interval={3000} pause={false} controls={false} indicators>
           <Carousel.Item>
             <img className="d-block w-100" src={slider1} alt="slide 1" />
           </Carousel.Item>
-
           <Carousel.Item>
             <img className="d-block w-100" src={slider2} alt="slide 2" />
           </Carousel.Item>
-
           <Carousel.Item>
             <img className="d-block w-100" src={slider3} alt="slide 3" />
           </Carousel.Item>
         </Carousel>
       </div>
 
+      {/* RIGHT */}
       <div className="login-right">
         <div className="login-title">
-          <img className="d-block logo" src={logo} alt="slide 1" />
+          <img className="logo" src={logo} alt="Smart Parking" />
           <h1>ĐĂNG NHẬP</h1>
         </div>
 
         <Form.Group className="mb-3">
           <Form.Label>Tên đăng nhập</Form.Label>
-          <Form.Control name="userName" value={account.userName} onChange={handleChange} />
+          <Form.Control
+            name="email"
+            value={account.email}
+            onChange={handleChange}
+          />
         </Form.Group>
 
         <Form.Group className="mb-3">

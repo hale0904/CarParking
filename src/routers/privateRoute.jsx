@@ -1,9 +1,8 @@
 import { Navigate, Outlet } from 'react-router-dom';
+import AuthHelper from '../app/c-lib/auth/auth.helper';
 
 const PrivateLayout = () => {
-  const isAuthenticated = !!localStorage.getItem('token');
-
-  if (!isAuthenticated) {
+  if (!AuthHelper.isAuthenticated()) {
     return <Navigate to="/login" replace />;
   }
 
