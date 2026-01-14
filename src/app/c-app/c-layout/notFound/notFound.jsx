@@ -12,14 +12,10 @@ function NotFound() {
       }}
     >
       <h1 style={{ fontSize: '72px', marginBottom: '16px' }}>404</h1>
-      <p style={{ fontSize: '18px', marginBottom: '24px' }}>
-        Trang bạn tìm không tồn tại
-      </p>
+      <p style={{ fontSize: '18px', marginBottom: '24px' }}>Trang bạn tìm không tồn tại</p>
 
       <Link to="/login">
-        <button style={{ padding: '10px 20px', cursor: 'pointer' }}>
-          Quay về đăng nhập
-        </button>
+        <button style={{ padding: '10px 20px', cursor: 'pointer' }}>Quay về đăng nhập</button>
       </Link>
     </div>
   );
