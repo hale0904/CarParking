@@ -1,4 +1,4 @@
 export class Account {
-  userName = '';
+  email = '';
   password = '';
 }

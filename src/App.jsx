@@ -1,11 +1,15 @@
 import { RouterProvider } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
+import { NotFound } from './app/c-app/c-layout/notFound';
 import { router } from './routers/routing';
 
-console.log('APP RUN, router =', router);
-
 function App() {
-  console.log('APP RENDER');
+  // const router = createBrowserRouter([{
+  //   path: "/admin",
+  //   element:<LayoutAdmin />,
+  //   errorElement: <NotFound />,
 
+  // }]);
   return <RouterProvider router={router} />;
 }
 

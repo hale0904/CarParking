@@ -1,5 +1,5 @@
 import LayoutAdmin from '../c-layout/layout-default/LayoutAdmin';
-import Login001 from './pages/login001-admin/login001-admin.page';
+import Login001 from './pages/login-admin/Login';
 import { Navigate } from 'react-router-dom';
 
 export const authRoutes = [

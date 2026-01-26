@@ -1,18 +1,12 @@
-import PrivateLayout from '~/routers/privateRoute';
-
-import { LayoutDefault } from '.';
-import { dashboardRoutes } from '../c-dashboard';
-import CarParkingManagement from '../c-map/pages/CarParkingManagement';
+import { mapRoutes } from '../c-map/router';
+import LayoutDefault from './layout-default/LayoutAdmin';
 
 export const layoutRoutes = [
   {
     path: '/admin',
-    element: <LayoutDefault />, // check login
+    element: <LayoutDefault />,
     children: [
-      {
-        path: 'carparking-management',
-        element: <CarParkingManagement />,
-      },
+      ...mapRoutes,
     ],
   },
 ];

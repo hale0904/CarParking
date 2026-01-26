@@ -67,7 +67,7 @@ const MenuList = ({ darkTheme }) => (
       {
         key: 'maps',
         icon: <EnvironmentOutlined />,
-        label: <Link to="/admin/carparking-management">Quản lý map</Link>,
+        label: <Link to="/admin/carparking-list">Quản lý map</Link>,
       },
       {
         key: 'users',
