@@ -1,0 +1,246 @@
+/* parkingMapEditor.scss */
+
+// Variables matching Admin Layout
+$bg-color: #F8F9FB;
+$border-color: #E5E7EB;
+$primary-blue: #2563EB;
+$text-primary: #1F2937;
+$text-secondary: #6B7280;
+$white: #FFFFFF;
+$sidebar-width: 280px;
+$props-width: 300px;
+$header-height: 64px;
+
+// Canvas Background Pattern
+@mixin grid-pattern {
+    background-image:
+        linear-gradient(rgba($border-color, 0.5) 1px, transparent 1px),
+        linear-gradient(90deg, rgba($border-color, 0.5) 1px, transparent 1px);
+    background-size: 20px 20px;
+    background-color: #F3F4F6;
+}
+
+// 1. Entry Page (Empty State)
+.parking-map-entry {
+    height: calc(100vh - 48px); // Adjust for any layout padding
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    background: $white;
+    border-radius: 12px;
+
+    .empty-state-content {
+        text-align: center;
+        max-width: 400px;
+
+        .empty-icon {
+            font-size: 64px;
+            color: #D1D5DB;
+            margin-bottom: 24px;
+            display: block;
+        }
+
+        h2 {
+            font-size: 24px;
+            font-weight: 600;
+            color: $text-primary;
+            margin-bottom: 12px;
+        }
+
+        p {
+            color: $text-secondary;
+            margin-bottom: 32px;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+    }
+}
+
+// 2. Editor Layout
+.parking-map-editor {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: $bg-color;
+    position: fixed; // Overlay or full page
+    top: 0;
+    left: 0;
+    width: 100vw;
+    z-index: 1000; // Above sidebar if needed, or inside main content
+}
+
+// Top Bar
+.editor-top-bar {
+    height: $header-height;
+    background: $white;
+    border-bottom: 1px solid $border-color;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    flex-shrink: 0;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+
+    .top-bar-left,
+    .top-bar-right {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 200px; // Balance spacing
+    }
+
+    .top-bar-center {
+        flex: 1;
+        text-align: center;
+
+        h2 {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 0;
+            color: $text-primary;
+        }
+    }
+
+    .top-bar-right {
+        justify-content: flex-end;
+    }
+}
+
+// Three Column Layout
+.editor-main-layout {
+    flex: 1;
+    display: flex; // Flex row
+    overflow: hidden;
+    position: relative;
+
+    // Left Panel: Tools
+    .editor-tools-panel {
+        width: $sidebar-width;
+        background: $white;
+        border-right: 1px solid $border-color;
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+        flex-shrink: 0;
+
+        .tools-section {
+            padding: 20px;
+            border-bottom: 1px solid $border-color;
+
+            h3 {
+                font-size: 12px;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                color: $text-secondary;
+                font-weight: 600;
+                margin-bottom: 16px;
+            }
+
+            .tools-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
+            }
+
+            .tool-btn {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                padding: 16px 8px;
+                background: $bg-color;
+                border: 1px solid transparent;
+                border-radius: 8px;
+                cursor: grab;
+                transition: all 0.2s;
+                color: $text-primary;
+
+                &:hover {
+                    background: $white;
+                    border-color: $primary-blue;
+                    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.1);
+                    color: $primary-blue;
+                }
+
+                .anticon {
+                    font-size: 20px;
+                }
+
+                span {
+                    font-size: 12px;
+                    font-weight: 500;
+                }
+            }
+        }
+    }
+
+    // Center Panel: Canvas
+    .editor-canvas-area {
+        flex: 1;
+        position: relative;
+        overflow: hidden; // Canvas handles scroll/pan
+        @include grid-pattern;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        .canvas-toolbar-overlay {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: $white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            display: flex;
+            gap: 16px;
+            z-index: 10;
+        }
+    }
+
+    // Right Panel: Properties
+    .editor-properties-panel {
+        width: $props-width;
+        background: $white;
+        border-left: 1px solid $border-color;
+        overflow-y: auto;
+        flex-shrink: 0;
+        padding: 24px;
+
+        .panel-header {
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid $border-color;
+
+            h3 {
+                margin: 0;
+                font-size: 16px;
+                font-weight: 600;
+            }
+        }
+
+        .empty-props {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 200px;
+            color: $text-secondary;
+            text-align: center;
+
+            .anticon {
+                font-size: 32px;
+                margin-bottom: 12px;
+                opacity: 0.5;
+            }
+        }
+
+        // Ant Form Overrides if needed
+        .ant-form-item {
+            margin-bottom: 16px;
+        }
+    }
+}

@@ -33,7 +33,7 @@ function Login001() {
       localStorage.setItem('refreshToken', res.refreshToken);
 
       alert('Đăng nhập thành công');
-      navigate('/dashboard');
+      navigate('/admin');
     } catch (err) {
       alert(err?.response?.data?.message || 'Đăng nhập thất bại');
     }
@@ -65,11 +65,7 @@ function Login001() {
 
         <Form.Group className="mb-3">
           <Form.Label>Tên đăng nhập</Form.Label>
-          <Form.Control
-            name="email"
-            value={account.email}
-            onChange={handleChange}
-          />
+          <Form.Control name="email" value={account.email} onChange={handleChange} />
         </Form.Group>
 
         <Form.Group className="mb-3">

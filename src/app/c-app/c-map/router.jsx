@@ -1,13 +1,16 @@
-import CarParkingManagement from './pages/CarParkingManagement';
-import CarParkingList from './pages/CarParkingList';
+import ParkingMapEditor from './pages/ParkingMapEditor';
 
 export const mapRoutes = [
     {
-        path: 'carparking-list',
-        element: <CarParkingList />,
+        path: 'parking-map',
+        element: <ParkingMapEditor />,
     },
-    {
-        path: 'carparking-management',
-        element: <CarParkingManagement />,
-    },
+    // {
+    //     path: 'floor-list',
+    //     element: <FloorList />,
+    // },
+    // {
+    //     path: 'carparking-management',
+    //     element: <CarParkingManagement />,
+    // },
 ];

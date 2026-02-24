@@ -1,185 +1,171 @@
 import React, { useState } from 'react';
 import './layoutAdmin.scss';
-import { Layout, Menu, Button, theme } from 'antd';
+import { Layout, Menu, Button, Dropdown } from 'antd';
 import {
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
-  FireFilled,
-  DashboardOutlined,
-  CarOutlined,
-  FundOutlined,
-  WarningOutlined,
-  EnvironmentOutlined,
   UserOutlined,
+  MenuUnfoldOutlined,
+  MenuFoldOutlined,
+  DashboardOutlined,
+  EnvironmentOutlined,
+  ThunderboltOutlined,
   BarChartOutlined,
-  ProfileOutlined,
+  CreditCardOutlined,
+  BellOutlined,
   LogoutOutlined,
+  UpOutlined,
 } from '@ant-design/icons';
-
-import { FaMoon, FaSun } from 'react-icons/fa';
-import { Link, Outlet } from 'react-router-dom';
+import { Link, Outlet, useNavigate } from 'react-router-dom';
 
 const { Header, Sider, Content } = Layout;
 
-/* ---------- Logo ---------- */
-const Logo = () => (
-  <div className="logo">
-    <div className="logo-icon">
-      <FireFilled />
+/* ---------- Components ---------- */
+
+const Logo = ({ collapsed, toggleCollapsed }) => (
+  <div className={`logo-section ${collapsed ? 'collapsed' : ''}`}>
+    <div className="logo-brand">
+      <span className="logo-text">Smart Parking</span>
     </div>
+    <Button
+      type="text"
+      icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+      onClick={toggleCollapsed}
+      className="trigger-btn"
+    />
   </div>
 );
+
+const AdminFooter = ({ collapsed }) => {
+  const navigate = useNavigate();
+
+  const items = [
+    {
+      key: 'logout',
+      label: 'Đăng xuất',
+      icon: <LogoutOutlined />,
+      danger: true,
+      onClick: () => navigate('/'),
+    },
+  ];
+
+  return (
+    <div className={`admin-footer ${collapsed ? 'collapsed' : ''}`}>
+      <Dropdown menu={{ items }} placement="topLeft" trigger={['click']}>
+        <div className="footer-content">
+          <div className="admin-avatar">
+            <UserOutlined />
+            <div className="status-dot-notification" />
+          </div>
+          {!collapsed && (
+            <>
+              <div className="admin-info">
+                <span className="admin-name">Admin</span>
+                <span className="admin-role">Super User</span>
+              </div>
+              <UpOutlined className="dropdown-arrow" />
+            </>
+          )}
+        </div>
+      </Dropdown>
+    </div>
+  );
+};
 
 /* ---------- Sidebar Menu ---------- */
-const MenuList = ({ darkTheme }) => (
-  <Menu
-    theme={darkTheme ? 'dark' : 'light'}
-    mode="inline"
-    className="menu-bar"
-    items={[
-      {
-        key: 'dashboard',
-        icon: <DashboardOutlined />,
-        label: <Link to="/admin">Dashboard</Link>,
-        children: [
-          {
-            key: 'dashboard-cars',
-            icon: <CarOutlined />,
-            label: <Link to="/admin/dashboard/cars">Số lượng xe</Link>,
-          },
-          {
-            key: 'dashboard-parking',
-            icon: <FundOutlined />,
-            label: <Link to="/admin/dashboard/parking">Tình trạng bãi đỗ</Link>,
-          },
-          {
-            key: 'dashboard-alerts',
-            icon: <WarningOutlined />,
-            label: <Link to="/admin/dashboard/iot-alerts">Cảnh báo thiết bị IoT</Link>,
-          },
-        ],
-      },
-      {
-        key: 'cars',
-        icon: <CarOutlined />,
-        label: <Link to="/admin/cars">Quản lý xe</Link>,
-      },
-      {
-        key: 'maps',
-        icon: <EnvironmentOutlined />,
-        label: <Link to="/admin/carparking-list">Quản lý map</Link>,
-      },
-      {
-        key: 'users',
-        icon: <UserOutlined />,
-        label: <Link to="/admin/users">Quản lý user</Link>,
-      },
-      {
-        key: 'statistics',
-        icon: <BarChartOutlined />,
-        label: <Link to="/admin/statistics">Thống kê</Link>,
-      },
-    ]}
-  />
-);
+const MenuList = () => {
+  const items = [
+    {
+      key: 'dashboard',
+      icon: <DashboardOutlined />,
+      label: <Link to="/admin">Dashboard</Link>,
+    },
+    {
+      key: 'maps',
+      icon: <EnvironmentOutlined />,
+      label: <Link to="/admin/parking-map">Parking Map</Link>,
+    },
+    {
+      key: 'iot',
+      icon: <ThunderboltOutlined />,
+      label: <Link to="/admin/dashboard/iot-alerts">IoT Devices</Link>,
+    },
+    {
+      key: 'reports',
+      icon: <BarChartOutlined />,
+      label: <Link to="/admin/statistics">Report & Statistic</Link>,
+    },
+    {
+      key: 'payment',
+      icon: <CreditCardOutlined />,
+      label: <Link to="/admin/payment">Payment</Link>,
+    },
+    {
+      key: 'notifications',
+      icon: <BellOutlined />,
+      label: <Link to="/admin/notifications">Notifications</Link>,
+    },
+  ];
 
-/* ---------- Theme Toggle ---------- */
-const ToggleThemeButton = ({ darkTheme, toggleTheme }) => (
-  <div className="toggle-theme-btn">
-    <Button onClick={toggleTheme}>{darkTheme ? <FaSun /> : <FaMoon />}</Button>
-  </div>
-);
-
-const AdminProfile = () => {
   return (
-    <div className="admin-profile">
-      <div className="admin-avatar">
-        <UserOutlined />
-        <span className="admin-name">Admin</span>
-      </div>
-
-      <div className="admin-dropdown">
-        <div className="dropdown-item">
-          <ProfileOutlined />
-          <span>Thông tin tài khoản</span>
-        </div>
-        <div className="dropdown-divider" />
-        <div className="dropdown-item logout">
-          <LogoutOutlined />
-          <span>Đăng xuất</span>
-        </div>
-      </div>
-    </div>
+    <Menu
+      theme="light"
+      mode="inline"
+      className="menu-bar"
+      defaultSelectedKeys={['dashboard']}
+      items={items}
+    />
   );
 };
 
 /* ---------- Main Layout ---------- */
 const LayoutAdmin = () => {
-  const [darkTheme, setDarkTheme] = useState(false);
-  const [collapsed, setCollapsed] = useState(true);
-
-  const {
-    token: { colorBgContainer },
-  } = theme.useToken();
+  const [collapsed, setCollapsed] = useState(false);
+  const sidebarWidth = 260;
 
   return (
-    <Layout style={{ height: '100vh' }}>
-      {/* Sidebar */}
+    <Layout style={{ minHeight: '100vh' }}>
       <Sider
-        collapsed={collapsed}
+        width={sidebarWidth}
+        collapsedWidth={80}
         collapsible
         trigger={null}
-        theme={darkTheme ? 'dark' : 'light'}
-        className="sidebar"
+        collapsed={collapsed}
+        className="modern-sidebar"
+        theme="light"
         style={{
           position: 'fixed',
-          height: '100vh',
           left: 0,
           top: 0,
           bottom: 0,
+          zIndex: 100,
         }}
       >
-        <Logo />
-        <MenuList darkTheme={darkTheme} />
-        <ToggleThemeButton darkTheme={darkTheme} toggleTheme={() => setDarkTheme(!darkTheme)} />
+        <div className="sidebar-inner">
+          <Logo collapsed={collapsed} toggleCollapsed={() => setCollapsed(!collapsed)} />
+          <div className="scrollable-menu">
+            <MenuList />
+          </div>
+          <AdminFooter collapsed={collapsed} />
+        </div>
       </Sider>
 
-      {/* Main */}
       <Layout
         style={{
-          marginLeft: collapsed ? 80 : 200,
-          height: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
+          marginLeft: collapsed ? 80 : sidebarWidth,
+          minHeight: '100vh',
+          transition: 'margin-left 0.2s',
+          background: '#F3F4F6' // Main content background
         }}
       >
-        {/* Header */}
-        <Header
-          style={{
-            padding: '0 16px',
-            background: colorBgContainer,
-            height: 64,
-            flexShrink: 0, // 🔒 không cho co
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <Button
-            type="text"
-            onClick={() => setCollapsed(!collapsed)}
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-          />
-        </Header>
-
-        {/* Content */}
+        {/* Minimal Header if needed, otherwise just content area spacing */}
         <Content
           style={{
-            flex: 1, // 🔥 chiếm phần còn lại
-            overflow: 'auto', // 🔥 CHỈ CHỖ NÀY SCROLL
-            margin: 16,
+            margin: '24px',
             padding: 24,
-            background: '#f0f2f5',
+            background: '#fff',
+            borderRadius: 12, // Modern rounded corners for content card
+            minHeight: 280,
+            overflow: 'initial',
+            boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
           }}
         >
           <Outlet />

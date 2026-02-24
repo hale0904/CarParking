@@ -21,6 +21,26 @@ const ParkingService = {
       params, // axios sẽ tự convert thành query string
     });
   },
+
+  getListFloorMap(params) {
+    return apiHelper.post(PARKING_API.GET_LIST_FLOOR, {
+      params,
+    });
+  },
+
+  saveFloor(data) {
+    return apiHelper.post(PARKING_API.UPDATE_FLOOR, data);
+  },
+
+  deleteFloor(parkingCode, items) {
+    return apiHelper.post(PARKING_API.DELETE_FLOOR, {
+      parkingCode,
+      items,
+    });
+  },
+
+
+
   saveParking(data) {
     return apiHelper.post(PARKING_API.UPDATE, data);
   },
