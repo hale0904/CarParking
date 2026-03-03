@@ -11,7 +11,7 @@ import {
 
 const { Title } = Typography;
 
-const EditorTopBar = ({ parkingName = "New Parking Map", onSave, onCancel }) => {
+const EditorTopBar = ({ parkingName = "New Parking Map", onSave, onCancel, isSaving }) => {
     const navigate = useNavigate();
 
     const handleBack = () => {
@@ -60,6 +60,8 @@ const EditorTopBar = ({ parkingName = "New Parking Map", onSave, onCancel }) => 
                     type="primary"
                     icon={<SaveOutlined />}
                     onClick={onSave}
+                    disabled={isSaving}
+                    loading={isSaving}
                 >
                     Save Map
                 </Button>

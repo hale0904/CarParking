@@ -36,9 +36,20 @@ const EditorToolsPanel = ({
 
     const ToolItem = ({ type, label, icon }) => (
         <div
-            className="tool-btn"
-            draggable
-            onDragStart={(e) => handleDragStart(e, type)}
+            className={`tool-btn ${!isBoundaryClosed && (type === 'SLOT_GROUP' || type === 'SLOT') ? 'tool-button--disabled' : ''}`}
+            draggable={isBoundaryClosed || (type !== 'SLOT_GROUP' && type !== 'SLOT')}
+            onDragStart={(e) => {
+                if (!isBoundaryClosed && (type === 'SLOT_GROUP' || type === 'SLOT')) {
+                    e.preventDefault();
+                    return;
+                }
+                handleDragStart(e, type);
+            }}
+            title={(!isBoundaryClosed && (type === 'SLOT_GROUP' || type === 'SLOT')) ? "Draw and close a boundary first" : label}
+            style={{
+                opacity: (!isBoundaryClosed && (type === 'SLOT_GROUP' || type === 'SLOT')) ? 0.4 : 1,
+                cursor: (!isBoundaryClosed && (type === 'SLOT_GROUP' || type === 'SLOT')) ? 'not-allowed' : 'grab'
+            }}
         >
             {icon}
             <span>{label}</span>
@@ -64,18 +75,26 @@ const EditorToolsPanel = ({
                         <span>Pan</span>
                     </div>
 
-                    <div
-                        className={`tool-btn ${editorMode === 'DRAW_ZONE' ? 'active' : ''}`}
-                        onClick={onStartDrawZone}
+                    <Button
+                        className={`tool-btn ${editorMode === 'DRAW_ZONE' ? 'active' : ''} ${!isBoundaryClosed ? 'tool-button--disabled' : ''}`}
+                        disabled={!isBoundaryClosed}
+                        title={!isBoundaryClosed ? "Draw a boundary first before adding zones" : "Draw Zone"}
+                        onClick={!isBoundaryClosed ? undefined : onStartDrawZone}
                         style={{
                             backgroundColor: editorMode === 'DRAW_ZONE' ? '#e6f7ff' : 'transparent',
                             borderColor: editorMode === 'DRAW_ZONE' ? '#1890ff' : '#d9d9d9',
-                            color: editorMode === 'DRAW_ZONE' ? '#1890ff' : 'inherit'
+                            color: editorMode === 'DRAW_ZONE' ? '#1890ff' : 'inherit',
+                            height: 'auto',
+                            padding: '8px',
+                            opacity: !isBoundaryClosed ? 0.4 : 1,
+                            cursor: !isBoundaryClosed ? 'not-allowed' : 'pointer'
                         }}
                     >
-                        <BorderOuterOutlined />
-                        <span>Zone</span>
-                    </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                            <BorderOuterOutlined />
+                            <span>Zone</span>
+                        </div>
+                    </Button>
                     <ToolItem
                         type="SLOT_GROUP"
                         label="Slot Group"

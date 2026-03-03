@@ -76,7 +76,7 @@ const MenuList = () => {
     {
       key: 'dashboard',
       icon: <DashboardOutlined />,
-      label: <Link to="/admin">Dashboard</Link>,
+      label: <Link to="/admin/dashboard">Dashboard</Link>,
     },
     {
       key: 'maps',

@@ -2,10 +2,12 @@ import React from 'react';
 import { Empty, Form, Input, InputNumber, Select, Button, Tag, Typography } from 'antd';
 import { ReloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
 
+import { MOCK_SENSORS } from '../../../../../mocks/sensors';
+
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-const EditorPropertiesPanel = ({ selectedData, selectedType, onUpdate, onCycleStatus, onDelete }) => {
+const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onUpdate, onUpdateGroupedSlot, onUpdateSlot, onCycleStatus, onDelete, assignedSensorIds = [] }) => {
     if (!selectedData) {
         return (
             <div className="empty-props">
@@ -23,7 +25,16 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, onUpdate, onCycleSt
         if (value && value.target) {
             val = value.target.value;
         }
-        onUpdate(selectedData.id, { [field]: val });
+        if (selectedType === 'SLOT' && selectedEntity?.parentId) {
+            onUpdateGroupedSlot(
+                selectedEntity.grandParentId,
+                selectedEntity.parentId,
+                selectedEntity.id,
+                { [field]: val }
+            );
+        } else {
+            onUpdate(selectedData.id, { [field]: val });
+        }
     };
 
     const getStatusColor = (status) => {
@@ -39,6 +50,7 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, onUpdate, onCycleSt
         <div className="properties-content">
             <div className="panel-header">
                 <Title level={5} style={{ margin: 0 }}>
+                    {selectedType === 'PARKING_GLOBAL' && 'Global Properties'}
                     {selectedType === 'ZONE' && 'Zone Properties'}
                     {selectedType === 'SLOT_GROUP' && 'Group Properties'}
                     {selectedType === 'SLOT' && 'Slot Properties'}
@@ -46,23 +58,77 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, onUpdate, onCycleSt
                     {selectedType === 'ENTRANCE' && 'Entrance Properties'}
                     {selectedType === 'EXIT' && 'Exit Properties'}
                 </Title>
-                <Tag color="blue">{selectedData.id}</Tag>
+                {selectedData?.id && <Tag color="blue">{selectedData.id}</Tag>}
             </div>
 
             <Form layout="vertical" size="small">
                 {selectedType === 'SLOT' ? (
                     <>
                         <Form.Item label="Status">
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Tag color={getStatusColor(selectedData.status)} style={{ margin: 0, flex: 1, textAlign: 'center', padding: '4px' }}>
-                                    {selectedData.status?.toUpperCase()}
-                                </Tag>
-                                <Button
-                                    icon={<ReloadOutlined />}
-                                    onClick={onCycleStatus}
-                                    title="Cycle Status"
-                                />
-                            </div>
+                            <Select
+                                value={selectedData.status || 'available'}
+                                onChange={(val) => handleChange('status', val)}
+                                style={{ width: '100%' }}
+                            >
+                                <Option value="available"><span style={{ color: '#86efac', fontWeight: 'bold' }}>AVAILABLE</span></Option>
+                                <Option value="occupied"><span style={{ color: '#f87171', fontWeight: 'bold' }}>OCCUPIED</span></Option>
+                                <Option value="reserved"><span style={{ color: '#fbbf24', fontWeight: 'bold' }}>RESERVED</span></Option>
+                            </Select>
+                        </Form.Item>
+
+                        <Form.Item label="IoT Sensor ID" style={{ marginBottom: '8px' }}>
+                            <Select
+                                showSearch
+                                value={selectedData.sensorId || ''}
+                                placeholder="-- Chọn sensor --"
+                                optionFilterProp="children"
+                                onChange={(val) => {
+                                    const newVal = val === '' ? null : val;
+                                    const selectedSensor = MOCK_SENSORS.find(s => s.id === newVal);
+
+                                    const updates = { sensorId: newVal };
+                                    if (selectedSensor) {
+                                        updates.sensorStatus = selectedSensor.sensorStatus;
+                                    }
+
+                                    if (onUpdateSlot) {
+                                        onUpdateSlot(selectedData.id, updates);
+                                    } else {
+                                        handleChange('sensorId', updates.sensorId);
+                                        if (updates.sensorStatus !== undefined) {
+                                            handleChange('sensorStatus', updates.sensorStatus);
+                                        }
+                                    }
+                                }}
+                                style={{ width: '100%' }}
+                            >
+                                <Option value="">-- Chọn sensor --</Option>
+                                {MOCK_SENSORS.map(sensor => {
+                                    const isAssignedToOther = assignedSensorIds.includes(sensor.id) && sensor.id !== selectedData.sensorId;
+                                    if (isAssignedToOther) return null;
+
+                                    return (
+                                        <Option key={sensor.id} value={sensor.id}>
+                                            {sensor.name} — {sensor.zone}
+                                        </Option>
+                                    );
+                                })}
+                            </Select>
+                        </Form.Item>
+                        <Form.Item label="Sensor Status" style={{ marginBottom: '16px' }}>
+                            <Select
+                                value={selectedData.sensorStatus || ''}
+                                onChange={(val) => {
+                                    const newVal = val === '' ? null : val;
+                                    if (onUpdateSlot) onUpdateSlot(selectedData.id, { sensorStatus: newVal });
+                                    else handleChange('sensorStatus', newVal);
+                                }}
+                                style={{ width: '100%' }}
+                            >
+                                <Option value="">-- None --</Option>
+                                <Option value="online">Online</Option>
+                                <Option value="offline">Offline</Option>
+                            </Select>
                         </Form.Item>
 
                         {selectedData.parentGroupId && (
@@ -89,6 +155,56 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, onUpdate, onCycleSt
                                 </Form.Item>
                             </div>
                         )}
+                    </>
+                ) : selectedType === 'PARKING_GLOBAL' ? (
+                    <>
+                        <Form.Item label="Parking Name">
+                            <Input
+                                value={selectedData.parkingName}
+                                onChange={(e) => handleChange('parkingName', e)}
+                            />
+                        </Form.Item>
+                        <Form.Item label="Parking Code">
+                            <Input
+                                value={selectedData.parkingCode}
+                                onChange={(e) => handleChange('parkingCode', e)}
+                                placeholder="e.g. PK001"
+                            />
+                        </Form.Item>
+                        <Form.Item label="Location">
+                            <Input
+                                value={selectedData.parkingLocation}
+                                onChange={(e) => handleChange('parkingLocation', e)}
+                                placeholder="e.g. Phường 8, TP HCM"
+                            />
+                        </Form.Item>
+                        <Form.Item label="Measurement Unit">
+                            <Select
+                                value={selectedData.parkingUnit}
+                                onChange={(val) => handleChange('parkingUnit', val)}
+                            >
+                                <Option value="m">Meters (m)</Option>
+                                <Option value="ft">Feet (ft)</Option>
+                            </Select>
+                        </Form.Item>
+                        <Form.Item label="Current Floor Level">
+                            <InputNumber
+                                style={{ width: '100%' }}
+                                value={selectedData.activeFloorLevel}
+                                onChange={(val) => handleChange('activeFloorLevel', val)}
+                                placeholder="e.g. -1 for B1, 1 for ground"
+                            />
+                        </Form.Item>
+                        <Form.Item label={`1 grid cell = [ ${selectedData.gridRealSize || 2.5} ] ${selectedData.parkingUnit}`}>
+                            <InputNumber
+                                style={{ width: '100%' }}
+                                value={selectedData.gridRealSize}
+                                onChange={(val) => handleChange('gridRealSize', val)}
+                                placeholder="e.g. 2.5"
+                                step={0.1}
+                                min={0.1}
+                            />
+                        </Form.Item>
                     </>
                 ) : selectedType === 'LANE' ? null : (
                     <>

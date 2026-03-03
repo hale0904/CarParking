@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Group, Line, Circle } from 'react-konva';
+import { Group, Line, Circle, Label, Tag, Text } from 'react-konva';
 
 const GRID_SIZE = 20;
 
@@ -9,6 +9,9 @@ const ZonePolygon = ({
     isDrawing,
     color,
     isSelected,
+    scale = 1,
+    gridRealSize = 2.5,
+    parkingUnit = 'm',
     onDragVertex,
     onVertexClick,
     onDragMove,
@@ -16,6 +19,18 @@ const ZonePolygon = ({
     onClick
 }) => {
     const [hoveredVertexIndex, setHoveredVertexIndex] = useState(null);
+    const [hoveredEdge, setHoveredEdge] = useState(null);
+
+    const handleEdgeHover = (e, index, x1, y1, x2, y2) => {
+        const edgeLengthPx = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+        const realLength = (edgeLengthPx / GRID_SIZE) * gridRealSize;
+        setHoveredEdge({
+            index,
+            x: (x1 + x2) / 2,
+            y: (y1 + y2) / 2,
+            length: realLength
+        });
+    };
 
     if (!points || points.length === 0) return null;
 
@@ -103,6 +118,38 @@ const ZonePolygon = ({
                     />
                 );
             })}
+
+            {/* Edge hit areas for tooltips */}
+            {closed && points.length >= 6 && (() => {
+                const edges = [];
+                for (let i = 0; i < points.length; i += 2) {
+                    const x1 = points[i];
+                    const y1 = points[i + 1];
+                    const nextIx = (i + 2) % points.length;
+                    const x2 = points[nextIx];
+                    const y2 = points[nextIx + 1];
+                    edges.push(
+                        <Line
+                            key={`edge-${i}`}
+                            points={[x1, y1, x2, y2]}
+                            stroke="transparent"
+                            strokeWidth={15}
+                            listening={true}
+                            onMouseEnter={(e) => handleEdgeHover(e, i, x1, y1, x2, y2)}
+                            onMouseLeave={() => setHoveredEdge(null)}
+                        />
+                    );
+                }
+                return edges;
+            })()}
+
+            {/* Tooltip rendering */}
+            {hoveredEdge && (
+                <Label x={hoveredEdge.x} y={hoveredEdge.y} scaleX={1 / scale} scaleY={1 / scale} listening={false}>
+                    <Tag fill="rgba(0,0,0,0.7)" pointerDirection="down" pointerWidth={10} pointerHeight={10} lineJoin="round" cornerRadius={4} />
+                    <Text text={`${hoveredEdge.length.toFixed(1)}${parkingUnit}`} fill="#fff" padding={6} fontSize={12} />
+                </Label>
+            )}
         </Group>
     );
 };

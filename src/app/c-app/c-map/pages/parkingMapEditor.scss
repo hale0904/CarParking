@@ -107,6 +107,70 @@ $header-height: 64px;
     }
 }
 
+// Floor Tabs
+.floor-tabs-container {
+    display: flex;
+    align-items: flex-end;
+    background: #f3f4f6;
+    border-bottom: 1px solid $border-color;
+    padding: 12px 24px 0;
+    gap: 4px;
+    flex-shrink: 0;
+
+    .floor-tab {
+        padding: 8px 20px;
+        background: transparent;
+        border: 1px solid transparent;
+        border-bottom: none;
+        border-radius: 8px 8px 0 0;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        color: $text-secondary;
+        transition: all 0.2s;
+        margin-bottom: -1px;
+
+        &:hover {
+            color: $primary-blue;
+            background: rgba($white, 0.5);
+        }
+
+        &.active {
+            background: $white;
+            color: #e65100; // Highlight color per Figma spec
+            border: 1px solid $border-color;
+            border-top: 3px solid #e65100;
+            border-bottom: 1px solid $white;
+        }
+
+        .delete-floor-btn {
+            font-size: 16px;
+            line-height: 1;
+            padding: 0 4px;
+            border-radius: 4px;
+            color: #9cb3af;
+
+            &:hover {
+                color: #ef4444;
+                background: #fee2e2;
+            }
+        }
+    }
+
+    .add-floor-btn {
+        padding: 8px 12px;
+        color: $primary-blue;
+        margin-left: 8px;
+
+        &:hover {
+            background: rgba($primary-blue, 0.1);
+        }
+    }
+}
+
 // Three Column Layout
 .editor-main-layout {
     flex: 1;

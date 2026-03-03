@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Stage, Layer, Rect, Transformer, Line, Group, Text } from 'react-konva';
+import { Stage, Layer, Rect, Transformer, Line, Group, Text, Label, Tag } from 'react-konva';
 import BoundaryPolygon from './BoundaryPolygon';
 import ZonePolygon from './ZonePolygon';
 import { isPolygonInsidePolygon, pointInPolygon } from '../../utils/geometry';
@@ -34,10 +34,22 @@ const EditorCanvas = ({
     editorMode, // 'DRAW_BOUNDARY' | 'EDIT_BOUNDARY' | 'DRAW_ZONE' | null
     draftZone,
     setDraftZone,
-    onFinishZone
+    onFinishZone,
+    gridRealSize = 2.5,
+    parkingUnit = 'm'
 }) => {
     const stageRef = useRef(null);
     const transformerRef = useRef(null);
+    const hudRef = useRef(null);
+
+    const updateHUD = () => {
+        if (!stageRef.current || !hudRef.current) return;
+        const stage = stageRef.current;
+        const s = stage.scaleX();
+        hudRef.current.scale({ x: 1 / s, y: 1 / s });
+        hudRef.current.position({ x: -stage.x() / s, y: -stage.y() / s });
+        hudRef.current.getLayer()?.batchDraw();
+    };
 
     useEffect(() => {
         if (!transformerRef.current || !stageRef.current) return;
@@ -64,6 +76,11 @@ const EditorCanvas = ({
 
         transformerRef.current.getLayer()?.batchDraw();
     }, [selectedEntity, zones, standaloneSlots, lanes, entrances, exits]);
+
+    useEffect(() => {
+        updateHUD();
+    });
+
 
 
     const handleWheel = (e) => {
@@ -92,6 +109,13 @@ const EditorCanvas = ({
         };
 
         stage.position(newPos);
+        updateHUD();
+    };
+
+    const handleDragMove = (e) => {
+        if (e.target === stageRef.current) {
+            updateHUD();
+        }
     };
 
     const handleDrop = (e) => {
@@ -119,6 +143,7 @@ const EditorCanvas = ({
         let fill = "#86efac"; // available
         if (slot.status === 'occupied') fill = "#f87171";
         if (slot.status === 'reserved') fill = "#fbbf24";
+        if (slot.isActive === false) fill = "#d1d5db";
 
         return (
             <Group
@@ -160,11 +185,27 @@ const EditorCanvas = ({
                     fontSize={10}
                     fill="#000"
                 />
+
+                {slot.sensorId && (
+                    <Rect
+                        x={SLOT_SIZE.width - 7}
+                        y={2}
+                        width={5}
+                        height={5}
+                        cornerRadius={10}
+                        fill={
+                            slot.sensorStatus === 'online' ? '#22c55e' :
+                                slot.sensorStatus === 'offline' ? '#ef4444' :
+                                    '#94a3b8'
+                        }
+                    />
+                )}
             </Group>
         );
     };
 
     const renderSlotGroup = (group, parentZoneId) => {
+        const isSelected = selectedEntity && selectedEntity.id === group.id;
         const isHorizontal = group.direction === 'horizontal';
 
         // Ensure slots exists
@@ -176,6 +217,7 @@ const EditorCanvas = ({
                 id={group.id}
                 x={group.x}
                 y={group.y}
+                rotation={group.rotation || 0}
                 draggable={editorMode !== 'PAN'}
                 onDragEnd={(e) => {
                     const x = Math.round(e.target.x() / GRID_SIZE) * GRID_SIZE;
@@ -185,18 +227,17 @@ const EditorCanvas = ({
                 }}
                 onTransformEnd={(e) => {
                     const node = e.target;
-                    const scaleX = node.scaleX();
-                    const scaleY = node.scaleY();
-                    node.scaleX(1); node.scaleY(1);
-
-                    const newW = Math.max(SLOT_SIZE.width, Math.round(node.width() * scaleX));
-                    const newH = Math.max(SLOT_SIZE.height, Math.round(node.height() * scaleY));
+                    const newWidth = group.width * node.scaleX();
+                    const newHeight = group.height * node.scaleY();
+                    node.scaleX(1);
+                    node.scaleY(1);
 
                     onUpdateSlotGroup(parentZoneId, group.id, {
-                        width: newW,
-                        height: newH,
                         x: node.x(),
-                        y: node.y()
+                        y: node.y(),
+                        width: newWidth,
+                        height: newHeight,
+                        rotation: node.rotation()
                     });
                 }}
                 onClick={(e) => {
@@ -213,6 +254,17 @@ const EditorCanvas = ({
                     const sy = isHorizontal ? 0 : i * SLOT_SIZE.height;
                     return renderSlot(slot, sx, sy, true, group.id, parentZoneId);
                 })}
+
+                {isSelected && (
+                    <Text
+                        text={`${group.slots?.length || 0} slots | ${((SLOT_SIZE.width / GRID_SIZE) * gridRealSize).toFixed(1)}${parkingUnit} × ${((SLOT_SIZE.height / GRID_SIZE) * gridRealSize).toFixed(1)}${parkingUnit}`}
+                        x={0}
+                        y={group.height + 5 / scale}
+                        fontSize={Math.max(10, 14 / scale)}
+                        fill="#374151"
+                        listening={false}
+                    />
+                )}
             </Group>
         );
 
@@ -242,25 +294,21 @@ const EditorCanvas = ({
                 }}
                 onTransformEnd={(e) => {
                     const node = e.target;
-                    const scaleX = node.scaleX();
+                    const newWidth = Math.round(gate.width * node.scaleX());
                     node.scaleX(1);
-                    node.scaleY(1); // lock thickness
+                    node.scaleY(1);
 
-                    const newWidth = Math.round(node.width() * scaleX);
+                    const update = {
+                        width: newWidth,
+                        height: gate.height, // giữ nguyên height gốc
+                        x: node.x(),
+                        y: node.y(),
+                        rotation: Math.round(node.rotation()),
+                    };
 
                     type === 'ENTRANCE'
-                        ? onUpdateEntrance(gate.id, {
-                            width: newWidth,
-                            x: node.x(),
-                            y: node.y(),
-                            rotation: Math.round(node.rotation()),
-                        })
-                        : onUpdateExit(gate.id, {
-                            width: newWidth,
-                            x: node.x(),
-                            y: node.y(),
-                            rotation: Math.round(node.rotation()),
-                        });
+                        ? onUpdateEntrance(gate.id, update)
+                        : onUpdateExit(gate.id, update);
                 }}
                 onClick={(e) => {
                     if (editorMode === 'PAN') return;
@@ -289,6 +337,17 @@ const EditorCanvas = ({
                     fontSize={10}
                     fill="#1f2937"
                 />
+
+                {isSelected && (
+                    <Text
+                        text={`${((gate.width / GRID_SIZE) * gridRealSize).toFixed(1)}${parkingUnit} × ${((gate.height / GRID_SIZE) * gridRealSize).toFixed(1)}${parkingUnit}`}
+                        x={0}
+                        y={gate.height + 5 / scale}
+                        fontSize={Math.max(10, 14 / scale)}
+                        fill="#374151"
+                        listening={false}
+                    />
+                )}
             </Group>
         );
     };
@@ -315,12 +374,13 @@ const EditorCanvas = ({
                 }}
                 onTransformEnd={(e) => {
                     const node = e.target;
-                    const scaleX = node.scaleX();
-                    const scaleY = node.scaleY();
-                    node.scaleX(1); node.scaleY(1);
+                    const newWidth = Math.round(lane.width * node.scaleX());
+                    const newHeight = Math.round(lane.height * node.scaleY());
+                    node.scaleX(1);
+                    node.scaleY(1);
                     onUpdateLane(lane.id, {
-                        width: Math.round(node.width() * scaleX),
-                        height: Math.round(node.height() * scaleY),
+                        width: newWidth,
+                        height: newHeight,
                         x: node.x(),
                         y: node.y(),
                         rotation: Math.round(node.rotation())
@@ -354,8 +414,56 @@ const EditorCanvas = ({
                     fontSize={10}
                     fill="#64748b"
                 />
+
+                {isSelected && (
+                    <Text
+                        text={`${((lane.width / GRID_SIZE) * gridRealSize).toFixed(1)}${parkingUnit} × ${((lane.height / GRID_SIZE) * gridRealSize).toFixed(1)}${parkingUnit}`}
+                        x={0}
+                        y={lane.height + 5 / scale}
+                        fontSize={Math.max(10, 14 / scale)}
+                        fill="#374151"
+                        listening={false}
+                    />
+                )}
             </Group>
         );
+    };
+
+    const renderScaleBar = () => {
+        const niceValues = [1, 2, 5, 10, 25, 50, 100, 200, 500];
+        const pixelsPerMeter = (GRID_SIZE / gridRealSize) * scale;
+        const targetMeters = 100 / pixelsPerMeter;
+        const niceMeter = niceValues.find(v => v >= targetMeters) || 500;
+        const barPixels = niceMeter * pixelsPerMeter; // actual pixel width on screen
+
+        return (
+            <Group x={20} y={560}>
+                <Line
+                    points={[0, 0, 0, 8, barPixels, 8, barPixels, 0]}
+                    stroke="#374151"
+                    strokeWidth={2}
+                />
+                <Text
+                    text={`${niceMeter}${parkingUnit}`}
+                    x={barPixels + 10}
+                    y={-2}
+                    fontSize={12}
+                    fill="#374151"
+                    fontStyle="bold"
+                />
+            </Group>
+        );
+    };
+
+    const computeBBox = (points) => {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (let i = 0; i < points.length; i += 2) {
+            if (points[i] < minX) minX = points[i];
+            if (points[i] > maxX) maxX = points[i];
+            if (points[i + 1] < minY) minY = points[i + 1];
+            if (points[i + 1] > maxY) maxY = points[i + 1];
+        }
+        return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
     };
 
 
@@ -418,6 +526,7 @@ const EditorCanvas = ({
                         }
                     }}
                     onWheel={handleWheel}
+                    onDragMove={handleDragMove}
                     draggable={editorMode === 'PAN'}
                     style={{ cursor: editorMode === 'PAN' ? (stageRef.current?.isDragging() ? 'grabbing' : 'grab') : 'default', backgroundColor: '#f0f2f5' }}
                 >
@@ -428,6 +537,9 @@ const EditorCanvas = ({
                             points={boundary.points}
                             closed={boundary.closed}
                             isDrawing={editorMode === 'DRAW_BOUNDARY'}
+                            scale={scale}
+                            gridRealSize={gridRealSize}
+                            parkingUnit={parkingUnit}
                             onDragVertex={(index, x, y) => {
                                 const newPoints = [...boundary.points];
                                 newPoints[index * 2] = x;
@@ -447,6 +559,9 @@ const EditorCanvas = ({
                             points={draftZone?.points}
                             closed={draftZone?.closed}
                             isDrawing={editorMode === 'DRAW_ZONE'}
+                            scale={scale}
+                            gridRealSize={gridRealSize}
+                            parkingUnit={parkingUnit}
                             onVertexClick={(index) => {
                                 if (editorMode === 'DRAW_ZONE' && index === 0 && draftZone.points.length >= 6) {
                                     onFinishZone();
@@ -467,6 +582,9 @@ const EditorCanvas = ({
                                         closed={true}
                                         color={zone.color}
                                         isSelected={isSelected}
+                                        scale={scale}
+                                        gridRealSize={gridRealSize}
+                                        parkingUnit={parkingUnit}
                                         onDragVertex={(index, x, y) => {
                                             if (boundary.closed && !pointInPolygon({ x, y }, boundary.points)) {
                                                 alert("Vertex must remain inside boundary.");
@@ -512,6 +630,19 @@ const EditorCanvas = ({
                                         <Text text={zone.name} x={zone.points[0]} y={zone.points[1] - 20} fontSize={16} fill="#374151" fontStyle="bold" />
                                     )}
 
+                                    {isSelected && zone.points && zone.points.length > 5 && (() => {
+                                        const bbox = computeBBox(zone.points);
+                                        const realW = ((bbox.w / GRID_SIZE) * gridRealSize).toFixed(1);
+                                        const realH = ((bbox.h / GRID_SIZE) * gridRealSize).toFixed(1);
+                                        const fs = Math.max(10, 14 / scale);
+                                        return (
+                                            <Group listening={false}>
+                                                <Text text={`${realW}${parkingUnit}`} x={bbox.x} y={bbox.y - fs - 5} width={bbox.w} align="center" fontSize={fs} fill="#374151" />
+                                                <Text text={`${realH}${parkingUnit}`} x={bbox.x + bbox.w + 5} y={bbox.y + bbox.h / 2 - fs / 2} fontSize={fs} fill="#374151" />
+                                            </Group>
+                                        );
+                                    })()}
+
                                     {zone.slotGroups && zone.slotGroups.map(group => renderSlotGroup(group, zone.id))}
                                 </Group>
                             );
@@ -529,6 +660,11 @@ const EditorCanvas = ({
                             enabledAnchors={['middle-left', 'middle-right']}
                             rotateEnabled={true}
                         />
+                    </Layer>
+
+                    {/* HUD Layer that is inversely transformed to stay fixed to view */}
+                    <Layer ref={hudRef} listening={false}>
+                        {renderScaleBar()}
                     </Layer>
                 </Stage>
             </div>
