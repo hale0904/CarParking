@@ -581,6 +581,7 @@ const EditorCanvas = ({
                                         points={zone.points}
                                         closed={true}
                                         color={zone.color}
+                                        fill={zone.color}
                                         isSelected={isSelected}
                                         scale={scale}
                                         gridRealSize={gridRealSize}

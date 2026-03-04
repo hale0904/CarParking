@@ -34,6 +34,7 @@ const ParkingMapEditor = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [parkingCode, setParkingCode] = useState('PK001');
     const [parkingLocation, setParkingLocation] = useState('');
+    const [parkingStatus, setParkingStatus] = useState(1);
 
     // [MULTIFLOOR STATE]
     const [parkingName, setParkingName] = useState('New Parking Lot');
@@ -58,14 +59,19 @@ const ParkingMapEditor = () => {
 
     React.useEffect(() => {
         const loadMapData = async () => {
+
             try {
                 const res = await axiosClient.post(PARKING_API.GET_LIST, {});
                 const list = res.data?.data || res.data;
+
                 if (list && list.length > 0) {
                     const item = list[0];
+                    // Thêm tạm vào loadMapData sau dòng const item = list[0];
+                    console.log('RAW zones:', JSON.stringify(item.floors?.[0]?.zones, null, 2));
                     setParkingCode(item.code || 'PK001');
                     setParkingName(item.name || 'New Parking Lot');
                     setParkingLocation(item.location || '');
+                    setParkingStatus(item.status !== undefined ? item.status : 1);
 
                     if (item.floors && item.floors.length > 0) {
                         const mappedFloors = item.floors.map(floor => ({
@@ -101,10 +107,12 @@ const ParkingMapEditor = () => {
                             zones: (floor.zones || []).map(zone => ({
                                 id: zone.code,
                                 name: zone.nameZone,
-                                color: '#3b82f6',
+                                status: zone.status !== undefined ? zone.status : 1,
+                                color: zone.color || '#3b82f6',
                                 points: zone.points,
                                 slotGroups: (zone.groupSlots || []).map(group => ({
                                     id: group.code,
+                                    code: group.code,
                                     name: group.nameGroupSlot,
                                     x: group.positionX,
                                     y: group.positionY,
@@ -112,12 +120,27 @@ const ParkingMapEditor = () => {
                                     height: group.height,
                                     rotation: group.rotation,
                                     direction: group.direction,
-                                    slots: (group.slots || []).map(slot => ({
-                                        id: slot.code,
-                                        status: slot.status === 0 ? 'available' : slot.status === 1 ? 'occupied' : 'reserved',
-                                        sensorId: slot.sensorId,
-                                        sensorStatus: slot.sensorStatus
-                                    }))
+                                    slots:
+                                        (group.slots && group.slots.length > 0
+                                            ? group.slots.map(slot => ({
+                                                id: slot.code,
+                                                code: slot.code,
+                                                status:
+                                                    slot.status === 0 ? 'available' :
+                                                        slot.status === 1 ? 'occupied' :
+                                                            slot.status === 2 ? 'reserved' :
+                                                                'available',
+                                                sensorId: slot.sensorId || null,
+                                                sensorStatus: slot.sensorStatus ? 'online' : 'offline'
+                                            }))
+                                            : Array.from({ length: group.availableSlots || 0 }).map((_, i) => ({
+                                                id: `${zone.code}-${group.code}-S${i + 1}`,
+                                                code: `S${i + 1}`,
+                                                status: 'available',
+                                                sensorId: null,
+                                                sensorStatus: null
+                                            }))
+                                        )
                                 }))
                             }))
                         }));
@@ -281,6 +304,7 @@ const ParkingMapEditor = () => {
         const newZone = {
             id: `zone-${Date.now()}`,
             name: 'New Zone',
+            status: 1,
             points: draftZone.points,
             color: '#3b82f6', // Default color
             slotGroups: []
@@ -412,6 +436,8 @@ const ParkingMapEditor = () => {
                 const initialCount = 5;
                 const newGroup = {
                     id: `sg-${Date.now()}`,
+                    name: 'New Group',
+                    rotation: 0,
                     x: x,
                     y: y,
                     width: initialCount * SLOT_SIZE.width,
@@ -596,7 +622,10 @@ const ParkingMapEditor = () => {
         if (selectedEntity.type === 'ZONE') handleUpdateZone(id, props);
         else if (selectedEntity.type === 'SLOT_GROUP') handleUpdateSlotGroup(selectedEntity.parentId, id, props);
         else if (selectedEntity.type === 'SLOT' && !selectedEntity.parentId) handleUpdateStandaloneSlot(id, props);
+        else if (selectedEntity.type === 'SLOT' && selectedEntity.parentId) handleUpdateGroupedSlot(selectedEntity.grandParentId, selectedEntity.parentId, id, props);
         else if (selectedEntity.type === 'LANE') handleUpdateLane(id, props);
+        else if (selectedEntity.type === 'ENTRANCE') handleUpdateEntrance(id, props);
+        else if (selectedEntity.type === 'EXIT') handleUpdateExit(id, props);
     };
 
     const handleSave = async () => {
@@ -608,7 +637,7 @@ const ParkingMapEditor = () => {
                 code: parkingCode,
                 name: parkingName,
                 location: parkingLocation,
-                status: 1,
+                status: parkingStatus || 1,
                 totalFloors: floors.length,
                 floors: floors.map((floor, fi) => ({
                     code: `F${String(fi + 1).padStart(3, '0')}`,
@@ -621,12 +650,13 @@ const ParkingMapEditor = () => {
                         closed: floor.boundary.closed
                     },
                     zones: floor.zones.map((zone, zi) => ({
-                        code: String(zi),
+                        code: zone.id || `Z${String(zi + 1).padStart(3, '0')}`,
                         nameZone: zone.name,
-                        status: 0,
+                        status: zone.status ?? 1,
+                        color: zone.color || '#3b82f6',
                         points: zone.points,
                         groupSlots: (zone.slotGroups || []).map((group, gi) => ({
-                            code: `GS${gi + 1}`,
+                            code: group.code || `${zone.id}-GS${gi + 1}`,
                             nameGroupSlot: group.name || `Dãy ${gi + 1}`,
                             positionX: group.x,
                             positionY: group.y,
@@ -638,8 +668,8 @@ const ParkingMapEditor = () => {
                             occupiedSlots: group.slots.filter(s => s.status === 'occupied').length,
                             reservedSlots: group.slots.filter(s => s.status === 'reserved').length,
                             slots: group.slots.map((slot, si) => ({
-                                code: `S${si + 1}`,
-                                nameSlot: `${zone.name?.split(' ').pop()?.charAt(0) || 'S'}${si + 1}`,
+                                code: slot.code || `${zone.id}-S${si + 1}`,
+                                nameSlot: `${zone.id}-S${si + 1}`,
                                 status: slot.status === 'available' ? 0 : slot.status === 'occupied' ? 1 : 2,
                                 sensorId: slot.sensorId || null,
                                 isSensorReal: !!slot.sensorId,
@@ -681,28 +711,6 @@ const ParkingMapEditor = () => {
             await axiosClient.post(PARKING_API.UPDATE_MAP, requestBody);
             message.success("Map saved successfully!");
 
-            const formattedFloors = floors.map(floor => ({
-                ...floor,
-                zones: floor.zones.map(zone => ({
-                    ...zone,
-                    slotGroups: (zone.slotGroups || []).map(group => ({
-                        id: group.id,
-                        x: group.x,
-                        y: group.y,
-                        width: group.width,
-                        height: group.height,
-                        rotation: group.rotation ?? 0,
-                        direction: group.direction,
-                        slots: (group.slots || []).map(slot => ({
-                            id: slot.id,
-                            status: slot.status,
-                            sensorId: slot.sensorId || null,
-                            sensorStatus: slot.sensorStatus || null
-                        }))
-                    }))
-                }))
-            }));
-
             const mapData = {
                 metadata: {
                     version: "2.0",
@@ -724,7 +732,7 @@ const ParkingMapEditor = () => {
                     id: parkingCode,
                     name: parkingName,
                     unit: parkingUnit,
-                    floors: formattedFloors
+                    floors: floors
                 }
             };
             saveMap(mapData);
@@ -923,7 +931,8 @@ const ParkingMapEditor = () => {
                             parkingLocation,
                             parkingUnit,
                             activeFloorLevel: activeFloor.level,
-                            gridRealSize
+                            gridRealSize,
+                            status: parkingStatus
                         })}
                         selectedType={selectedEntity ? selectedEntity.type : 'PARKING_GLOBAL'}
                         selectedEntity={selectedEntity}
@@ -938,6 +947,7 @@ const ParkingMapEditor = () => {
                                 if (props.parkingLocation !== undefined) setParkingLocation(props.parkingLocation);
                                 if (props.parkingUnit !== undefined) setParkingUnit(props.parkingUnit);
                                 if (props.gridRealSize !== undefined) setGridRealSize(props.gridRealSize);
+                                if (props.status !== undefined) setParkingStatus(props.status);
                                 if (props.activeFloorLevel !== undefined) {
                                     setFloors(prev => prev.map(f => f.id === activeFloorId ? { ...f, level: props.activeFloorLevel } : f));
                                 }

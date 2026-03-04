@@ -1,5 +1,5 @@
 import React from 'react';
-import { Empty, Form, Input, InputNumber, Select, Button, Tag, Typography } from 'antd';
+import { Empty, Form, Input, InputNumber, Select, Button, Tag, Typography, ColorPicker } from 'antd';
 import { ReloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
 
 import { MOCK_SENSORS } from '../../../../../mocks/sensors';
@@ -164,6 +164,16 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                                 onChange={(e) => handleChange('parkingName', e)}
                             />
                         </Form.Item>
+                        <Form.Item label="Status">
+                            <Select
+                                value={selectedData.status !== undefined ? selectedData.status : 1}
+                                onChange={(val) => handleChange('status', val)}
+                            >
+                                <Option value={0}>Editing</Option>
+                                <Option value={1}>Active</Option>
+                                <Option value={2}>Inactive</Option>
+                            </Select>
+                        </Form.Item>
                         <Form.Item label="Parking Code">
                             <Input
                                 value={selectedData.parkingCode}
@@ -210,6 +220,16 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                     <>
                         {selectedType === 'ZONE' && (
                             <>
+                                <Form.Item label="Status">
+                                    <Select
+                                        value={selectedData.status !== undefined ? selectedData.status : 1}
+                                        onChange={(val) => handleChange('status', val)}
+                                    >
+                                        <Option value={0}>Editing</Option>
+                                        <Option value={1}>Active</Option>
+                                        <Option value={2}>Inactive</Option>
+                                    </Select>
+                                </Form.Item>
                                 <Form.Item label="Zone Name">
                                     <Input
                                         value={selectedData.name}
@@ -217,11 +237,13 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                                     />
                                 </Form.Item>
                                 <Form.Item label="Color">
-                                    <Input
-                                        type="color"
+                                    <ColorPicker
                                         value={selectedData.color || '#3b82f6'}
-                                        onChange={(e) => handleChange('color', e)}
-                                        style={{ padding: 0, height: 32, cursor: 'pointer' }}
+                                        onChange={(color) => {
+                                            const hexString = typeof color === 'string' ? color : color.toHexString();
+                                            handleChange('color', hexString);
+                                        }}
+                                        showText
                                     />
                                 </Form.Item>
                             </>
@@ -229,6 +251,13 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
 
                         {selectedType === 'SLOT_GROUP' && (
                             <>
+                                <Form.Item label="Name">
+                                    <Input
+                                        value={selectedData.name || ''}
+                                        onChange={(e) => handleChange('name', e)}
+                                    />
+                                </Form.Item>
+
                                 <div className="form-row" style={{ display: 'flex', gap: '12px' }}>
                                     <Form.Item label="X Position" style={{ flex: 1 }}>
                                         <InputNumber

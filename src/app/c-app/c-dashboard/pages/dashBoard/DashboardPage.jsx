@@ -97,7 +97,7 @@ const DashboardPage = () => {
                             zones: (floor.zones || []).map(zone => ({
                                 id: zone.code,
                                 name: zone.nameZone,
-                                color: '#3b82f6',
+                                color: zone.color || '#3b82f6',
                                 points: zone.points,
                                 slotGroups: (zone.groupSlots || []).map(group => ({
                                     id: group.code,

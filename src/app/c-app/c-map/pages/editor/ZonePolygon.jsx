@@ -8,6 +8,7 @@ const ZonePolygon = ({
     closed,
     isDrawing,
     color,
+    fill,
     isSelected,
     scale = 1,
     gridRealSize = 2.5,
@@ -45,7 +46,10 @@ const ZonePolygon = ({
 
     // Base color or gray if undefined
     const baseColor = color || '#3b82f6';
-    const fillColor = `${baseColor}33`; // 20% opacity approx
+    // If fill is provided, ensure it has opacity. If it's a 7-char hex, add 33. Otherwise use it as is.
+    const fillColor = fill
+        ? (fill.length === 7 ? `${fill}33` : fill)
+        : `${baseColor}33`; // 20% opacity approx
 
     return (
         <Group
