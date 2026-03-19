@@ -66,14 +66,17 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                     <>
                         <Form.Item label="Status">
                             <Select
-                                value={selectedData.status || 'available'}
+                                value={selectedData.status || 'unassigned'}
                                 onChange={(val) => handleChange('status', val)}
                                 style={{ width: '100%' }}
+                                disabled={true}
                             >
+                                <Option value="unassigned"><span style={{ color: '#d1d5db', fontWeight: 'bold' }}>UNASSIGNED</span></Option>
                                 <Option value="available"><span style={{ color: '#86efac', fontWeight: 'bold' }}>AVAILABLE</span></Option>
                                 <Option value="occupied"><span style={{ color: '#f87171', fontWeight: 'bold' }}>OCCUPIED</span></Option>
                                 <Option value="reserved"><span style={{ color: '#fbbf24', fontWeight: 'bold' }}>RESERVED</span></Option>
                             </Select>
+                            <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>Trạng thái cập nhật tự động từ cảm biến IoT</div>
                         </Form.Item>
 
                         <Form.Item label="IoT Sensor ID" style={{ marginBottom: '8px' }}>

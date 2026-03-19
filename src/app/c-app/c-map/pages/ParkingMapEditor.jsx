@@ -12,8 +12,11 @@ import { pointInPolygon } from '../utils/geometry';
 import './parkingMapEditor.scss';
 import axiosClient from '../../../c-lib/axios/axiosClient.service';
 import { PARKING_API } from '../../../c-lib/constants/auth-api.constant';
+import { io } from "socket.io-client";
 
 const SLOT_SIZE = { width: 25, height: 40 };
+const SLOT_GAP = 3;
+const socket = io("https://be-smartparking.onrender.com");
 
 const EmptyStateMap = ({ onCreate }) => (
     <div className="parking-map-entry">
@@ -126,10 +129,11 @@ const ParkingMapEditor = () => {
                                                 id: slot.code,
                                                 code: slot.code,
                                                 status:
-                                                    slot.status === 0 ? 'available' :
-                                                        slot.status === 1 ? 'occupied' :
-                                                            slot.status === 2 ? 'reserved' :
-                                                                'available',
+                                                    slot.status === 0 ? 'available' :   // xanh
+                                                        slot.status === 1 ? 'occupied' :    // đỏ
+                                                            slot.status === 2 ? 'reserved' :    // vàng
+                                                                slot.status === 3 ? 'inactive' :    // xám
+                                                                    'available',
                                                 sensorId: slot.sensorId || null,
                                                 sensorStatus: slot.sensorStatus ? 'online' : 'offline'
                                             }))
@@ -155,6 +159,38 @@ const ParkingMapEditor = () => {
         };
 
         loadMapData();
+    }, []);
+
+    React.useEffect(() => {
+        socket.on("sensor_update", (data) => {
+            const { slotId, status, sensorStatus } = data;
+
+            setFloors(prev =>
+                prev.map(floor => ({
+                    ...floor,
+                    standaloneSlots: floor.standaloneSlots.map(slot =>
+                        slot.id === slotId
+                            ? { ...slot, status, sensorStatus }
+                            : slot
+                    ),
+                    zones: floor.zones.map(zone => ({
+                        ...zone,
+                        slotGroups: zone.slotGroups.map(group => ({
+                            ...group,
+                            slots: group.slots.map(slot =>
+                                slot.id === slotId
+                                    ? { ...slot, status, sensorStatus }
+                                    : slot
+                            )
+                        }))
+                    }))
+                }))
+            );
+        });
+
+        return () => {
+            socket.off("sensor_update");
+        };
     }, []);
 
     // Helpers to mimic old state setters for the active floor
@@ -230,7 +266,7 @@ const ParkingMapEditor = () => {
     const generateSlots = (count) => {
         return Array.from({ length: count }).map((_, i) => ({
             id: `slot-${Date.now()}-${i}`,
-            status: 'available',
+            status: 'unassigned',
             sensorId: null,
             sensorStatus: null
         }));
@@ -360,9 +396,13 @@ const ParkingMapEditor = () => {
         const isHorizontal = group.direction === 'horizontal';
         let count = 0;
         if (isHorizontal) {
-            count = Math.max(1, Math.floor(newWidth / SLOT_SIZE.width));
+            count = Math.max(1, Math.floor(
+                (newWidth + SLOT_GAP) / (SLOT_SIZE.width + SLOT_GAP)
+            ));
         } else {
-            count = Math.max(1, Math.floor(newHeight / SLOT_SIZE.height));
+            count = Math.max(1, Math.floor(
+                (newHeight + SLOT_GAP) / (SLOT_SIZE.height + SLOT_GAP)
+            ));
         }
 
         let newSlots = [...group.slots];
@@ -376,8 +416,12 @@ const ParkingMapEditor = () => {
         return {
             ...group,
             // Force precise dimensions based on slot count
-            width: isHorizontal ? count * SLOT_SIZE.width : SLOT_SIZE.width,
-            height: isHorizontal ? SLOT_SIZE.height : count * SLOT_SIZE.height,
+            width: isHorizontal
+                ? count * SLOT_SIZE.width + (count - 1) * SLOT_GAP
+                : SLOT_SIZE.width,
+            height: isHorizontal
+                ? SLOT_SIZE.height
+                : count * SLOT_SIZE.height + (count - 1) * SLOT_GAP,
             slots: newSlots
         };
     };
@@ -457,7 +501,7 @@ const ParkingMapEditor = () => {
             const newSlot = {
                 id: `slot-solo-${Date.now()}`,
                 x, y,
-                status: 'available',
+                status: 'unassigned',
                 sensorId: null,
                 sensorStatus: null
             };
@@ -507,39 +551,7 @@ const ParkingMapEditor = () => {
 
     // Cycle status helper for Properties Panel
     const cycleSlotStatus = () => {
-        if (!selectedEntity) return;
-        const { type, id, parentId, grandParentId } = selectedEntity;
-
-        const nextStatus = (current) => {
-            const map = { 'available': 'occupied', 'occupied': 'reserved', 'reserved': 'available' };
-            return map[current] || 'available';
-        };
-
-        if (type === 'SLOT' && parentId && grandParentId) {
-            // Grouped Slot
-            setZones(prev => prev.map(z => {
-                if (z.id !== grandParentId) return z;
-                return {
-                    ...z,
-                    slotGroups: z.slotGroups.map(g => {
-                        if (g.id !== parentId) return g;
-                        return {
-                            ...g,
-                            slots: g.slots.map(s => {
-                                if (s.id !== id) return s;
-                                return { ...s, status: nextStatus(s.status) };
-                            })
-                        };
-                    })
-                };
-            }));
-        } else if (type === 'SLOT' && !parentId) {
-            // Standalone Slot
-            setStandaloneSlots(prev => prev.map(s => {
-                if (s.id !== id) return s;
-                return { ...s, status: nextStatus(s.status) };
-            }));
-        }
+        return;
     };
 
     // Find actual data object for Selected Entity
@@ -629,6 +641,10 @@ const ParkingMapEditor = () => {
     };
 
     const handleSave = async () => {
+        if (!parkingCode?.trim()) {
+            message.error("Parking code is required!");
+            return;
+        }
         setIsSaving(true);
         const hideLoading = message.loading("Saving...", 0);
 
@@ -652,12 +668,14 @@ const ParkingMapEditor = () => {
                     zones: floor.zones.map((zone, zi) => ({
                         code: zone.id || `Z${String(zi + 1).padStart(3, '0')}`,
                         nameZone: zone.name,
-                        status: zone.status ?? 1,
+                        status: zone.status ?? 0,
                         color: zone.color || '#3b82f6',
                         points: zone.points,
                         groupSlots: (zone.slotGroups || []).map((group, gi) => ({
                             code: group.code || `${zone.id}-GS${gi + 1}`,
                             nameGroupSlot: group.name || `Dãy ${gi + 1}`,
+                            status: group.status ?? 0,
+                            color: zone.color || '#3b82f6',
                             positionX: group.x,
                             positionY: group.y,
                             rotation: group.rotation ?? 0,
@@ -668,13 +686,9 @@ const ParkingMapEditor = () => {
                             occupiedSlots: group.slots.filter(s => s.status === 'occupied').length,
                             reservedSlots: group.slots.filter(s => s.status === 'reserved').length,
                             slots: group.slots.map((slot, si) => ({
-                                code: slot.code || `${zone.id}-S${si + 1}`,
-                                nameSlot: `${zone.id}-S${si + 1}`,
-                                status: slot.status === 'available' ? 0 : slot.status === 'occupied' ? 1 : 2,
-                                sensorId: slot.sensorId || null,
-                                isSensorReal: !!slot.sensorId,
-                                isActive: true,
-                                sensorStatus: slot.sensorStatus === true || slot.sensorStatus === 'online' ? true : false
+                                code: slot.code || `${zone.id}-GS${gi + 1}-S${si + 1}`,
+                                nameSlot: slot.code || `${zone.id}-GS${gi + 1}-S${si + 1}`,
+                                status: 3,
                             }))
                         }))
                     })),
@@ -708,6 +722,7 @@ const ParkingMapEditor = () => {
                 }))
             };
 
+            console.log("REQUEST BODY:", JSON.stringify(requestBody, null, 2));
             await axiosClient.post(PARKING_API.UPDATE_MAP, requestBody);
             message.success("Map saved successfully!");
 

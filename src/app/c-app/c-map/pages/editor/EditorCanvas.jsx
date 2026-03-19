@@ -1,14 +1,62 @@
 import React, { useRef, useEffect } from 'react';
-import { Stage, Layer, Rect, Transformer, Line, Group, Text, Label, Tag } from 'react-konva';
+import { Stage, Layer, Rect, Transformer, Line, Group, Text, Label, Tag, Circle } from 'react-konva';
 import BoundaryPolygon from './BoundaryPolygon';
 import ZonePolygon from './ZonePolygon';
 import { isPolygonInsidePolygon, pointInPolygon } from '../../utils/geometry';
 
 const GRID_SIZE = 20;
 const SLOT_SIZE = { width: 25, height: 40 };
+const SLOT_GAP = 3;
 
 export const MIN_ZOOM = 0.1;
 export const MAX_ZOOM = 5;
+
+const SNAP_THRESHOLD = 15;
+
+const getLaneEndpoints = (lane) => {
+    const rad = ((lane.rotation || 0) * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const halfH = lane.height / 2;
+    const startX = lane.x + (0 * cos - halfH * sin);
+    const startY = lane.y + (0 * sin + halfH * cos);
+    const endX = lane.x + (lane.width * cos - halfH * sin);
+    const endY = lane.y + (lane.width * sin + halfH * cos);
+    return {
+        start: { x: startX, y: startY },
+        end: { x: endX, y: endY }
+    };
+};
+
+const snapLaneToOthers = (draggedLane, allLanes, scale = 1) => {
+    const { start, end } = getLaneEndpoints(draggedLane);
+    const threshold = SNAP_THRESHOLD / scale;
+    for (const other of allLanes) {
+        if (other.id === draggedLane.id) continue;
+        const { start: os, end: oe } = getLaneEndpoints(other);
+        const pairs = [
+            { mine: end, target: os },
+            { mine: end, target: oe },
+            { mine: start, target: os },
+            { mine: start, target: oe },
+        ];
+        for (const { mine, target } of pairs) {
+            const dist = Math.hypot(mine.x - target.x, mine.y - target.y);
+            if (dist < threshold) {
+                return {
+                    x: draggedLane.x + (target.x - mine.x),
+                    y: draggedLane.y + (target.y - mine.y),
+                    snapped: true
+                };
+            }
+        }
+    }
+    return {
+        x: Math.round(draggedLane.x / GRID_SIZE) * GRID_SIZE,
+        y: Math.round(draggedLane.y / GRID_SIZE) * GRID_SIZE,
+        snapped: false
+    };
+};
 
 const EditorCanvas = ({
     zones,
@@ -140,10 +188,13 @@ const EditorCanvas = ({
     const renderSlot = (slot, x, y, isGrouped, parentId, grandParentId) => {
         const isSelected = selectedEntity && selectedEntity.id === slot.id;
 
-        let fill = "#86efac"; // available
-        if (slot.status === 'occupied') fill = "#f87171";
-        if (slot.status === 'reserved') fill = "#fbbf24";
-        if (slot.isActive === false) fill = "#d1d5db";
+        const SLOT_COLORS = {
+            available: '#86efac',
+            occupied: '#f87171',
+            reserved: '#fbbf24',
+            unassigned: '#d1d5db',
+        };
+        const fill = SLOT_COLORS[slot.status] ?? SLOT_COLORS.unassigned;
 
         return (
             <Group
@@ -194,9 +245,11 @@ const EditorCanvas = ({
                         height={5}
                         cornerRadius={10}
                         fill={
-                            slot.sensorStatus === 'online' ? '#22c55e' :
-                                slot.sensorStatus === 'offline' ? '#ef4444' :
-                                    '#94a3b8'
+                            slot.sensorStatus === true || slot.sensorStatus === 'online'
+                                ? '#22c55e'
+                                : slot.sensorStatus === false || slot.sensorStatus === 'offline'
+                                    ? '#ef4444'
+                                    : '#94a3b8'
                         }
                     />
                 )}
@@ -250,8 +303,8 @@ const EditorCanvas = ({
                 <Rect width={group.width} height={group.height} fill="transparent" />
 
                 {slots.map((slot, i) => {
-                    const sx = isHorizontal ? i * SLOT_SIZE.width : 0;
-                    const sy = isHorizontal ? 0 : i * SLOT_SIZE.height;
+                    const sx = isHorizontal ? i * (SLOT_SIZE.width + SLOT_GAP) : 0;
+                    const sy = isHorizontal ? 0 : i * (SLOT_SIZE.height + SLOT_GAP);
                     return renderSlot(slot, sx, sy, true, group.id, parentZoneId);
                 })}
 
@@ -367,8 +420,8 @@ const EditorCanvas = ({
                 rotation={lane.rotation || 0}
                 draggable={editorMode !== 'PAN'}
                 onDragEnd={(e) => {
-                    const x = Math.round(e.target.x() / GRID_SIZE) * GRID_SIZE;
-                    const y = Math.round(e.target.y() / GRID_SIZE) * GRID_SIZE;
+                    const tempLane = { ...lane, x: e.target.x(), y: e.target.y() };
+                    const { x, y } = snapLaneToOthers(tempLane, lanes, scale);
                     e.target.x(x); e.target.y(y);
                     onUpdateLane(lane.id, { x, y });
                 }}
@@ -424,6 +477,28 @@ const EditorCanvas = ({
                         fill="#374151"
                         listening={false}
                     />
+                )}
+                {isSelected && (
+                    <>
+                        <Circle
+                            x={0}
+                            y={lane.height / 2}
+                            radius={6}
+                            fill="#3b82f6"
+                            stroke="#fff"
+                            strokeWidth={2}
+                            listening={false}
+                        />
+                        <Circle
+                            x={lane.width}
+                            y={lane.height / 2}
+                            radius={6}
+                            fill="#3b82f6"
+                            stroke="#fff"
+                            strokeWidth={2}
+                            listening={false}
+                        />
+                    </>
                 )}
             </Group>
         );

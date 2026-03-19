@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Typography, Row, Col, Card, Space, Tag, Divider, Tabs, ConfigProvider, Statistic, Empty, Spin, message } from 'antd';
 import { ExpandOutlined } from '@ant-design/icons';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import axiosClient from '../../../../c-lib/axios/axiosClient.service';
 import { PARKING_API } from '../../../../c-lib/constants/auth-api.constant';
 import EditorCanvas from '../../../c-map/pages/editor/EditorCanvas';
+import { io } from "socket.io-client";
+
 
 const { Title, Text } = Typography;
 
@@ -17,6 +19,7 @@ const pieData = [
 
 const FloorMapView = ({ floor, metadata }) => {
     const [scale, setScale] = useState(0.5);
+    const [editorMode] = useState("PAN")
 
     return (
         <EditorCanvas
@@ -39,7 +42,7 @@ const FloorMapView = ({ floor, metadata }) => {
             setScale={setScale}
             onUpdateBoundary={() => { }}
             onFinishBoundary={() => { }}
-            editorMode={null}
+            editorMode={editorMode}
             draftZone={{ points: [], closed: false }}
             setDraftZone={() => { }}
             onFinishZone={() => { }}
@@ -50,6 +53,7 @@ const FloorMapView = ({ floor, metadata }) => {
 };
 
 const DashboardPage = () => {
+    const socketRef = useRef(null);
     const [mapData, setMapData] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -58,7 +62,8 @@ const DashboardPage = () => {
             try {
                 const res = await axiosClient.post(PARKING_API.GET_LIST, {});
                 const list = res.data;
-                console.log(">>>>>>>>list", list);
+                console.log("RAW API DATA:", list);
+
                 if (!list || list.length === 0) return;
 
                 const item = list[0];
@@ -108,8 +113,14 @@ const DashboardPage = () => {
                                     rotation: group.rotation,
                                     direction: group.direction,
                                     slots: (group.slots || []).map(slot => ({
-                                        id: slot.code,
-                                        status: slot.status === 0 ? 'available' : slot.status === 1 ? 'occupied' : 'reserved',
+                                        id: slot._id,
+                                        code: slot.code,
+                                        status:
+                                            slot.status === 0 ? 'available' :   // xanh
+                                                slot.status === 1 ? 'occupied' :    // đỏ
+                                                    slot.status === 2 ? 'reserved' :    // vàng
+                                                        slot.status === 3 ? 'inactive' :    // xám
+                                                            'available',
                                         sensorId: slot.sensorId,
                                         sensorStatus: slot.sensorStatus
                                     }))
@@ -126,7 +137,60 @@ const DashboardPage = () => {
             }
         };
 
+        // ✅ Gọi lần đầu ngay lập tức
         fetchMap();
+
+        // ✅ Sau đó polling mỗi 3 giây
+        const interval = setInterval(fetchMap, 2000);
+
+        // ✅ Cleanup khi unmount — đặt ở useEffect, không phải trong fetchMap
+        return () => clearInterval(interval);
+
+    }, []);
+    useEffect(() => {
+
+        const socket = io("https://be-smartparking.onrender.com", {
+            transports: ["websocket"]
+        });
+
+        socketRef.current = socket;
+
+        socket.on("slot:update", (data) => {
+            const { slotId, sensorStatus } = data;
+            console.log("📡 Socket received:", data);
+            console.log("Looking for slotId:", data.slotId, typeof data.slotId);
+
+            // ✅ Xử lý rõ ràng hơn
+            const isOccupied = sensorStatus === true || sensorStatus === 1;
+
+            setMapData(prev => {
+                if (!prev) return prev;
+                const newFloors = prev.parking.floors.map(floor => ({
+                    ...floor,
+                    zones: floor.zones.map(zone => ({
+                        ...zone,
+                        slotGroups: zone.slotGroups.map(group => ({
+                            ...group,
+                            slots: group.slots.map(slot =>
+                                slot.id === slotId  // ✅ giờ cả 2 đều là string
+                                    ? {
+                                        ...slot,
+                                        sensorStatus: isOccupied,
+                                        status: isOccupied ? "occupied" : "available"
+                                    }
+                                    : slot
+                            )
+                        }))
+                    }))
+                }));
+                return { ...prev, parking: { ...prev.parking, floors: newFloors } };
+            });
+        });
+
+        return () => {
+            socket.disconnect();
+        };
+
     }, []);
 
     return (
@@ -277,7 +341,7 @@ const DashboardPage = () => {
                                                 </Tag>
                                             ))}
                                             <div style={{ marginTop: 16, border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', background: '#f9fafb' }}>
-                                                <FloorMapView floor={floor} metadata={mapData.metadata} />
+                                                <FloorMapView key={floor.id} floor={floor} metadata={mapData.metadata} />
                                             </div>
                                         </div>
                                     )
