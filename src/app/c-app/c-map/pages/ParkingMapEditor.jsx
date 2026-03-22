@@ -18,6 +18,90 @@ const SLOT_SIZE = { width: 25, height: 40 };
 const SLOT_GAP = 3;
 const socket = io("https://be-smartparking.onrender.com");
 
+const GRID_SIZE = 20;
+
+// Convert old Rect-lane (x,y,width,height,rotation) → new Polyline-lane (points[], width)
+const migrateLegacyLane = (lane) => {
+    if (Array.isArray(lane.points) && lane.points.length >= 4) {
+        return { id: lane.id, points: lane.points, width: lane.width ?? 20 };
+    }
+    const rad = ((lane.rotation || 0) * Math.PI) / 180;
+    const len = lane.width_legacy || lane.width || 100;
+    return {
+        id: lane.id,
+        points: [
+            lane.x, lane.y,
+            lane.x + len * Math.cos(rad),
+            lane.y + len * Math.sin(rad),
+        ],
+        width: lane.height ?? 20,
+    };
+};
+
+const parseLegacyLanesToGraph = (lanesApiData, apiNodes = []) => {
+    const laneNodes = [];
+    const laneEdges = [];
+
+    // Build _id → code map to resolve MongoDB ObjectId references
+    const mongoIdToCode = {};
+    apiNodes.forEach(n => {
+        laneNodes.push({ id: n.code, x: n.positionX, y: n.positionY });
+        if (n._id) mongoIdToCode[n._id] = n.code;
+    });
+
+    lanesApiData.forEach((l, i) => {
+        const pts = l.points;
+        const w = l.laneWidth || l.height || 20;
+        if (!pts || pts.length < 4) return;
+
+        // Resolve: if fromNodeId is a MongoDB _id, convert to code
+        const fromNodeId = mongoIdToCode[l.fromNodeId] || l.fromNodeId;
+        const toNodeId = mongoIdToCode[l.toNodeId] || l.toNodeId;
+
+        if (fromNodeId && toNodeId) {
+            if (!laneNodes.find(n => n.id === fromNodeId))
+                laneNodes.push({ id: fromNodeId, x: pts[0], y: pts[1] });
+            if (!laneNodes.find(n => n.id === toNodeId))
+                laneNodes.push({ id: toNodeId, x: pts[pts.length - 2], y: pts[pts.length - 1] });
+
+            if (!laneEdges.find(e =>
+                (e.fromNodeId === fromNodeId && e.toNodeId === toNodeId) ||
+                (e.fromNodeId === toNodeId && e.toNodeId === fromNodeId)
+            )) {
+                laneEdges.push({ id: l.code, fromNodeId, toNodeId, width: w });
+            }
+        } else {
+            // Fallback for legacy lanes without node references
+            const TOLERANCE = 15;
+            let prevNodeId = null;
+            for (let j = 0; j < pts.length; j += 2) {
+                const x = pts[j], y = pts[j + 1];
+                let node = laneNodes.find(n => Math.hypot(n.x - x, n.y - y) < TOLERANCE);
+                if (!node) {
+                    node = { id: `node-${l.code || i}-${j}`, x, y };
+                    laneNodes.push(node);
+                }
+                if (prevNodeId && prevNodeId !== node.id) {
+                    if (!laneEdges.find(e =>
+                        (e.fromNodeId === prevNodeId && e.toNodeId === node.id) ||
+                        (e.fromNodeId === node.id && e.toNodeId === prevNodeId)
+                    )) {
+                        laneEdges.push({ id: `edge-${l.code || i}-${j}`, fromNodeId: prevNodeId, toNodeId: node.id, width: w });
+                    }
+                }
+                prevNodeId = node.id;
+            }
+        }
+    });
+
+    // Filter out orphan nodes that have no connected edges
+    const connectedNodes = laneNodes.filter(node =>
+        laneEdges.some(e => e.fromNodeId === node.id || e.toNodeId === node.id)
+    );
+
+    return { laneNodes: connectedNodes, laneEdges };
+};
+
 const EmptyStateMap = ({ onCreate }) => (
     <div className="parking-map-entry">
         <div className="empty-state-content">
@@ -53,7 +137,8 @@ const ParkingMapEditor = () => {
             boundary: { points: [], closed: false },
             zones: [],
             standaloneSlots: [],
-            lanes: [],
+            laneNodes: [],
+            laneEdges: [],
             entrances: [],
             exits: []
         }
@@ -81,16 +166,10 @@ const ParkingMapEditor = () => {
                             id: floor.code,
                             name: floor.nameFloor,
                             level: floor.level || 1,
+                            status: floor.status ?? 0,
                             boundary: floor.boundary || { points: [], closed: false },
                             standaloneSlots: [],
-                            lanes: (floor.lanes || []).map(l => ({
-                                id: l.code,
-                                x: l.positionX,
-                                y: l.positionY,
-                                width: l.witdh,
-                                height: l.height,
-                                rotation: l.rotation
-                            })),
+                            ...parseLegacyLanesToGraph(floor.lanes || [], floor.laneNodes || []),
                             entrances: (floor.entrances || []).map(e => ({
                                 id: e.code,
                                 x: e.positionX,
@@ -195,7 +274,7 @@ const ParkingMapEditor = () => {
 
     // Helpers to mimic old state setters for the active floor
     const activeFloor = floors.find(f => f.id === activeFloorId) || floors[0];
-    const { zones, standaloneSlots, lanes, entrances, exits, boundary } = activeFloor;
+    const { zones, standaloneSlots, laneNodes, laneEdges, entrances, exits, boundary } = activeFloor;
 
     const updateActiveFloor = (updates) => {
         setFloors(prev => prev.map(f => {
@@ -209,7 +288,8 @@ const ParkingMapEditor = () => {
 
     const setZones = (val) => updateActiveFloor(f => ({ zones: typeof val === 'function' ? val(f.zones) : val }));
     const setStandaloneSlots = (val) => updateActiveFloor(f => ({ standaloneSlots: typeof val === 'function' ? val(f.standaloneSlots) : val }));
-    const setLanes = (val) => updateActiveFloor(f => ({ lanes: typeof val === 'function' ? val(f.lanes) : val }));
+    const setLaneNodes = (val) => updateActiveFloor(f => ({ laneNodes: typeof val === 'function' ? val(f.laneNodes) : val }));
+    const setLaneEdges = (val) => updateActiveFloor(f => ({ laneEdges: typeof val === 'function' ? val(f.laneEdges) : val }));
     const setEntrances = (val) => updateActiveFloor(f => ({ entrances: typeof val === 'function' ? val(f.entrances) : val }));
     const setExits = (val) => updateActiveFloor(f => ({ exits: typeof val === 'function' ? val(f.exits) : val }));
     const setBoundary = (val) => updateActiveFloor(f => ({ boundary: typeof val === 'function' ? val(f.boundary) : val }));
@@ -223,6 +303,7 @@ const ParkingMapEditor = () => {
         closed: false
     });
     const [editorMode, setEditorMode] = useState(null); // 'DRAW_BOUNDARY' | 'EDIT_BOUNDARY' | 'DRAW_ZONE' | null
+    const [drawingEdge, setDrawingEdge] = useState(null);
 
     // Floor Modal State
     const [isFloorModalVisible, setIsFloorModalVisible] = useState(false);
@@ -237,7 +318,8 @@ const ParkingMapEditor = () => {
             boundary: { points: [], closed: false },
             zones: [],
             standaloneSlots: [],
-            lanes: [],
+            laneNodes: [],
+            laneEdges: [],
             entrances: [],
             exits: []
         };
@@ -363,33 +445,7 @@ const ParkingMapEditor = () => {
         }
     };
 
-    // Keyboard shortcuts
-    React.useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (editorMode === 'DRAW_BOUNDARY') {
-                if (e.key === 'Enter') {
-                    handleFinishBoundary();
-                } else if (e.key === 'Escape') {
-                    handleCancelDraw();
-                } else if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-                    e.preventDefault();
-                    handleUndoBoundary();
-                }
-            } else if (editorMode === 'DRAW_ZONE') {
-                if (e.key === 'Enter') {
-                    handleFinishZone();
-                } else if (e.key === 'Escape') {
-                    handleCancelDrawZone();
-                } else if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-                    e.preventDefault();
-                    handleUndoZonePoint();
-                }
-            }
-        };
 
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [editorMode, boundary, draftZone]);
 
 
     const updateSlotGroupDimensions = (group, newWidth, newHeight) => {
@@ -460,9 +516,91 @@ const ParkingMapEditor = () => {
         setStandaloneSlots(prev => prev.map(s => s.id === id ? { ...s, ...newProps } : s));
     };
 
-    const handleUpdateLane = (id, newProps) => {
-        setLanes(prev => prev.map(l => l.id === id ? { ...l, ...newProps } : l));
+    const handleAddNode = (node) => setLaneNodes(prev => [...prev, node]);
+    const handleUpdateNode = (id, changes) => setLaneNodes(prev => prev.map(n => n.id === id ? { ...n, ...changes } : n));
+    const handleDeleteNode = (id) => {
+        setLaneNodes(prev => prev.filter(n => n.id !== id));
+        setLaneEdges(prev => prev.filter(e => e.fromNodeId !== id && e.toNodeId !== id));
+        if (selectedEntity?.id === id) setSelectedEntity(null);
+        if (drawingEdge?.fromNodeId === id) setDrawingEdge(null);
     };
+
+    const handleAddEdge = (edge) => setLaneEdges(prev => [...prev, edge]);
+    const handleUpdateEdge = (id, changes) => setLaneEdges(prev => prev.map(e => e.id === id ? { ...e, ...changes } : e));
+    const handleDeleteEdge = (id) => {
+        setLaneEdges(prev => prev.filter(e => e.id !== id));
+        if (selectedEntity?.id === id) setSelectedEntity(null);
+    };
+
+    // Keyboard shortcuts
+    React.useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (editorMode === 'DRAW_BOUNDARY') {
+                if (e.key === 'Enter') {
+                    handleFinishBoundary();
+                } else if (e.key === 'Escape') {
+                    handleCancelDraw();
+                } else if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                    e.preventDefault();
+                    handleUndoBoundary();
+                }
+            } else if (editorMode === 'DRAW_ZONE') {
+                if (e.key === 'Enter') {
+                    handleFinishZone();
+                } else if (e.key === 'Escape') {
+                    handleCancelDrawZone();
+                } else if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                    e.preventDefault();
+                    handleUndoZonePoint();
+                }
+            } else if (editorMode === 'DRAW_LANE') {
+                if (e.key === 'Escape') {
+                    setEditorMode(null);
+                    setDrawingEdge(null);
+                } else if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                    e.preventDefault();
+                    if (!drawingEdge) return;
+
+                    // Find the last edge that starts from the current drawing node
+                    const currentNodeId = drawingEdge.fromNodeId;
+
+                    // Find the edge that ends at currentNodeId (the one we just created)
+                    const lastEdge = [...laneEdges].reverse().find(
+                        edge => edge.toNodeId === currentNodeId || edge.fromNodeId === currentNodeId
+                    );
+
+                    if (lastEdge) {
+                        // The previous node is the other end of that edge
+                        const prevNodeId = lastEdge.fromNodeId === currentNodeId
+                            ? lastEdge.toNodeId
+                            : lastEdge.fromNodeId;
+
+                        // Remove the last edge
+                        handleDeleteEdge(lastEdge.id);
+
+                        // Remove the current node only if it has no other edges after deletion
+                        const remainingEdges = laneEdges.filter(e => e.id !== lastEdge.id);
+                        const nodeStillUsed = remainingEdges.some(
+                            e => e.fromNodeId === currentNodeId || e.toNodeId === currentNodeId
+                        );
+                        if (!nodeStillUsed) {
+                            handleDeleteNode(currentNodeId);
+                        }
+
+                        // Move drawing cursor back to previous node
+                        setDrawingEdge({ fromNodeId: prevNodeId });
+                    } else {
+                        // No edges yet — remove the starting node and cancel drawing
+                        handleDeleteNode(currentNodeId);
+                        setDrawingEdge(null);
+                    }
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [editorMode, boundary, draftZone, laneEdges, drawingEdge, handleDeleteEdge, handleDeleteNode]);
 
     const handleUpdateEntrance = (id, newProps) => {
         setEntrances(prev => prev.map(e => e.id === id ? { ...e, ...newProps } : e));
@@ -507,16 +645,6 @@ const ParkingMapEditor = () => {
             };
             setStandaloneSlots(prev => [...prev, newSlot]);
             setSelectedEntity({ type: 'SLOT', id: newSlot.id });
-        } else if (type === 'LANE') {
-            const newLane = {
-                id: `lane-${Date.now()}`,
-                x, y,
-                width: 100,
-                height: 20,
-                rotation: 0
-            };
-            setLanes(prev => [...prev, newLane]);
-            setSelectedEntity({ type: 'LANE', id: newLane.id });
         } else if (type === 'ENTRANCE') {
             const newEntrance = {
                 id: `ent-${Date.now()}`,
@@ -571,8 +699,13 @@ const ParkingMapEditor = () => {
             } else {
                 selectedData = standaloneSlots.find(s => s.id === selectedEntity.id);
             }
-        } else if (selectedEntity.type === 'LANE') {
-            selectedData = lanes.find(l => l.id === selectedEntity.id);
+        } else if (selectedEntity.type === 'LANE_NODE') {
+            selectedData = laneNodes.find(n => n.id === selectedEntity.id);
+            if (selectedData) {
+                selectedData._connectedCount = laneEdges.filter(e => e.fromNodeId === selectedData.id || e.toNodeId === selectedData.id).length;
+            }
+        } else if (selectedEntity.type === 'LANE_EDGE') {
+            selectedData = laneEdges.find(e => e.id === selectedEntity.id);
         } else if (selectedEntity.type === 'ENTRANCE') {
             selectedData = entrances.find(e => e.id === selectedEntity.id);
         } else if (selectedEntity.type === 'EXIT') {
@@ -635,7 +768,8 @@ const ParkingMapEditor = () => {
         else if (selectedEntity.type === 'SLOT_GROUP') handleUpdateSlotGroup(selectedEntity.parentId, id, props);
         else if (selectedEntity.type === 'SLOT' && !selectedEntity.parentId) handleUpdateStandaloneSlot(id, props);
         else if (selectedEntity.type === 'SLOT' && selectedEntity.parentId) handleUpdateGroupedSlot(selectedEntity.grandParentId, selectedEntity.parentId, id, props);
-        else if (selectedEntity.type === 'LANE') handleUpdateLane(id, props);
+        else if (selectedEntity.type === 'LANE_NODE') handleUpdateNode(id, props);
+        else if (selectedEntity.type === 'LANE_EDGE') handleUpdateEdge(id, props);
         else if (selectedEntity.type === 'ENTRANCE') handleUpdateEntrance(id, props);
         else if (selectedEntity.type === 'EXIT') handleUpdateExit(id, props);
     };
@@ -656,10 +790,12 @@ const ParkingMapEditor = () => {
                 status: parkingStatus || 1,
                 totalFloors: floors.length,
                 floors: floors.map((floor, fi) => ({
-                    code: `F${String(fi + 1).padStart(3, '0')}`,
+                    code: floor.id?.startsWith('floor-')
+                        ? `F${String(fi + 1).padStart(3, '0')}`
+                        : floor.id,
                     nameFloor: floor.name,
                     parkingCode: parkingCode,
-                    status: 0,
+                    status: floor.status ?? 0,
                     level: floor.level,
                     boundary: {
                         points: floor.boundary.points,
@@ -675,7 +811,7 @@ const ParkingMapEditor = () => {
                             code: group.code || `${zone.id}-GS${gi + 1}`,
                             nameGroupSlot: group.name || `Dãy ${gi + 1}`,
                             status: group.status ?? 0,
-                            color: zone.color || '#3b82f6',
+                            color: group.color || zone.color || '#3b82f6',
                             positionX: group.x,
                             positionY: group.y,
                             rotation: group.rotation ?? 0,
@@ -688,7 +824,10 @@ const ParkingMapEditor = () => {
                             slots: group.slots.map((slot, si) => ({
                                 code: slot.code || `${zone.id}-GS${gi + 1}-S${si + 1}`,
                                 nameSlot: slot.code || `${zone.id}-GS${gi + 1}-S${si + 1}`,
-                                status: 3,
+                                status: slot.status === 'available' ? 0
+                                    : slot.status === 'occupied' ? 1
+                                        : slot.status === 'reserved' ? 2
+                                            : 3,
                             }))
                         }))
                     })),
@@ -710,15 +849,42 @@ const ParkingMapEditor = () => {
                         rotation: e.rotation ?? 0,
                         status: 1
                     })),
-                    lanes: floor.lanes.map((l, i) => ({
-                        code: `L${i + 1}`,
-                        positionX: l.x,
-                        positionY: l.y,
-                        height: l.height,
-                        witdh: l.width,
-                        rotation: l.rotation ?? 0,
-                        status: 1
-                    }))
+                    laneNodes: (floor.laneNodes || [])
+                        .filter(node =>
+                            (floor.laneEdges || []).some(e =>
+                                e.fromNodeId === node.id || e.toNodeId === node.id
+                            )
+                        )
+                        .map(node => ({
+                            code: node.id,
+                            positionX: node.x,
+                            positionY: node.y,
+                        })),
+                    lanes: floor.laneEdges.map((edge, i) => {
+                        const fromNode = floor.laneNodes.find(n => n.id === edge.fromNodeId);
+                        const toNode = floor.laneNodes.find(n => n.id === edge.toNodeId);
+                        if (!fromNode || !toNode) {
+                            console.warn(
+                                '❌ Lane dropped at save:', edge.id,
+                                '| fromNode found:', !!fromNode,
+                                '| toNode found:', !!toNode,
+                                '| fromNodeId:', edge.fromNodeId,
+                                '| toNodeId:', edge.toNodeId,
+                                '| available node ids:', floor.laneNodes.map(n => n.id)
+                            );
+                            return null;
+                        }
+
+                        return {
+                            // Chỉ giữ code dạng L1, L2, L3... còn lại tạo mới
+                            code: `L${i + 1}`,
+                            status: 1,
+                            points: [fromNode.x, fromNode.y, toNode.x, toNode.y],
+                            laneWidth: edge.width ?? 20,
+                            fromNodeId: edge.fromNodeId,
+                            toNodeId: edge.toNodeId,
+                        };
+                    }).filter(Boolean)
                 }))
             };
 
@@ -753,7 +919,9 @@ const ParkingMapEditor = () => {
             saveMap(mapData);
 
         } catch (error) {
-            message.error("Failed to save map: " + error.message);
+            console.error("Save error status:", error.response?.status);
+            console.error("Save error detail:", JSON.stringify(error.response?.data, null, 2));
+            message.error("Failed to save: " + (error.response?.data?.message || error.response?.data?.error || error.message));
         } finally {
             hideLoading();
             setIsSaving(false);
@@ -764,8 +932,10 @@ const ParkingMapEditor = () => {
         if (!selectedEntity) return;
         const { type, id, parentId } = selectedEntity;
 
-        if (type === 'LANE') {
-            setLanes(prev => prev.filter(l => l.id !== id));
+        if (type === 'LANE_NODE') {
+            handleDeleteNode(id);
+        } else if (type === 'LANE_EDGE') {
+            handleDeleteEdge(id);
         } else if (type === 'ENTRANCE') {
             setEntrances(prev => prev.filter(e => e.id !== id));
         } else if (type === 'EXIT') {
@@ -884,7 +1054,15 @@ const ParkingMapEditor = () => {
                     <EditorCanvas
                         zones={zones}
                         standaloneSlots={standaloneSlots}
-                        lanes={lanes}
+                        laneNodes={laneNodes}
+                        laneEdges={laneEdges}
+                        onUpdateNode={handleUpdateNode}
+                        onAddNode={handleAddNode}
+                        onAddEdge={handleAddEdge}
+                        onDeleteNode={handleDeleteNode}
+                        onDeleteEdge={handleDeleteEdge}
+                        drawingEdge={drawingEdge}
+                        setDrawingEdge={setDrawingEdge}
                         entrances={entrances}
                         exits={exits}
                         selectedEntity={selectedEntity}
@@ -892,7 +1070,6 @@ const ParkingMapEditor = () => {
                         onUpdateZone={handleUpdateZone}
                         onUpdateSlotGroup={handleUpdateSlotGroup}
                         onUpdateStandaloneSlot={handleUpdateStandaloneSlot}
-                        onUpdateLane={handleUpdateLane}
                         onUpdateEntrance={handleUpdateEntrance}
                         onUpdateExit={handleUpdateExit}
                         onDrop={handleDrop}
@@ -946,6 +1123,7 @@ const ParkingMapEditor = () => {
                             parkingLocation,
                             parkingUnit,
                             activeFloorLevel: activeFloor.level,
+                            floorStatus: activeFloor.status ?? 1,
                             gridRealSize,
                             status: parkingStatus
                         })}
@@ -965,6 +1143,11 @@ const ParkingMapEditor = () => {
                                 if (props.status !== undefined) setParkingStatus(props.status);
                                 if (props.activeFloorLevel !== undefined) {
                                     setFloors(prev => prev.map(f => f.id === activeFloorId ? { ...f, level: props.activeFloorLevel } : f));
+                                }
+                                if (props.floorStatus !== undefined) {
+                                    setFloors(prev => prev.map(f =>
+                                        f.id === activeFloorId ? { ...f, status: props.floorStatus } : f
+                                    ));
                                 }
                             } else {
                                 handlePropertiesUpdate(id, props);

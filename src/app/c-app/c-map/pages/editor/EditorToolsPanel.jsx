@@ -215,14 +215,24 @@ const EditorToolsPanel = ({
             <div className="tools-section">
                 <h3>Traffic Flow</h3>
                 <div className="tools-grid">
-                    <div
-                        className="tool-btn"
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, 'LANE')}
+                    <Button
+                        className={`tool-btn ${editorMode === 'DRAW_LANE' ? 'active' : ''}`}
+                        title="Click to place nodes, click existing node to connect"
+                        onClick={() => setEditorMode(editorMode === 'DRAW_LANE' ? null : 'DRAW_LANE')}
+                        style={{
+                            backgroundColor: editorMode === 'DRAW_LANE' ? '#e6f7ff' : 'transparent',
+                            borderColor: editorMode === 'DRAW_LANE' ? '#1890ff' : '#d9d9d9',
+                            color: editorMode === 'DRAW_LANE' ? '#1890ff' : 'inherit',
+                            height: 'auto',
+                            padding: '8px',
+                            cursor: 'pointer'
+                        }}
                     >
-                        <ArrowRightOutlined />
-                        <span>Lane</span>
-                    </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                            <ArrowRightOutlined />
+                            <span>Draw Lane</span>
+                        </div>
+                    </Button>
                     <div
                         className="tool-btn"
                         draggable

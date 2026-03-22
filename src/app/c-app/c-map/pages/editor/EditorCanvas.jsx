@@ -3,6 +3,7 @@ import { Stage, Layer, Rect, Transformer, Line, Group, Text, Label, Tag, Circle 
 import BoundaryPolygon from './BoundaryPolygon';
 import ZonePolygon from './ZonePolygon';
 import { isPolygonInsidePolygon, pointInPolygon } from '../../utils/geometry';
+import LaneGraph from './LaneGraph';
 
 const GRID_SIZE = 20;
 const SLOT_SIZE = { width: 25, height: 40 };
@@ -13,55 +14,20 @@ export const MAX_ZOOM = 5;
 
 const SNAP_THRESHOLD = 15;
 
-const getLaneEndpoints = (lane) => {
-    const rad = ((lane.rotation || 0) * Math.PI) / 180;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    const halfH = lane.height / 2;
-    const startX = lane.x + (0 * cos - halfH * sin);
-    const startY = lane.y + (0 * sin + halfH * cos);
-    const endX = lane.x + (lane.width * cos - halfH * sin);
-    const endY = lane.y + (lane.width * sin + halfH * cos);
-    return {
-        start: { x: startX, y: startY },
-        end: { x: endX, y: endY }
-    };
-};
 
-const snapLaneToOthers = (draggedLane, allLanes, scale = 1) => {
-    const { start, end } = getLaneEndpoints(draggedLane);
-    const threshold = SNAP_THRESHOLD / scale;
-    for (const other of allLanes) {
-        if (other.id === draggedLane.id) continue;
-        const { start: os, end: oe } = getLaneEndpoints(other);
-        const pairs = [
-            { mine: end, target: os },
-            { mine: end, target: oe },
-            { mine: start, target: os },
-            { mine: start, target: oe },
-        ];
-        for (const { mine, target } of pairs) {
-            const dist = Math.hypot(mine.x - target.x, mine.y - target.y);
-            if (dist < threshold) {
-                return {
-                    x: draggedLane.x + (target.x - mine.x),
-                    y: draggedLane.y + (target.y - mine.y),
-                    snapped: true
-                };
-            }
-        }
-    }
-    return {
-        x: Math.round(draggedLane.x / GRID_SIZE) * GRID_SIZE,
-        y: Math.round(draggedLane.y / GRID_SIZE) * GRID_SIZE,
-        snapped: false
-    };
-};
 
 const EditorCanvas = ({
     zones,
     standaloneSlots,
-    lanes,
+    laneNodes,
+    laneEdges,
+    drawingEdge,
+    setDrawingEdge,
+    onAddNode,
+    onAddEdge,
+    onUpdateNode,
+    onDeleteNode,
+    onDeleteEdge,
     entrances,
     exits,
     selectedEntity,
@@ -69,7 +35,6 @@ const EditorCanvas = ({
     onUpdateZone,
     onUpdateSlotGroup,
     onUpdateStandaloneSlot,
-    onUpdateLane,
     onUpdateEntrance,
     onUpdateExit,
     onDrop,
@@ -88,6 +53,7 @@ const EditorCanvas = ({
 }) => {
     const stageRef = useRef(null);
     const transformerRef = useRef(null);
+    const [pointerPos, setPointerPos] = React.useState(null);
     const hudRef = useRef(null);
 
     const updateHUD = () => {
@@ -118,12 +84,14 @@ const EditorCanvas = ({
             transformerRef.current.nodes([]);
         } else if (selectedEntity.type === 'ZONE') {
             transformerRef.current.nodes([]);
+        } else if (selectedEntity.type === 'LANE' || selectedEntity.type === 'LANE_EDGE' || selectedEntity.type === 'LANE_NODE') {
+            transformerRef.current.nodes([]);
         } else {
             transformerRef.current.nodes([node]);
         }
 
         transformerRef.current.getLayer()?.batchDraw();
-    }, [selectedEntity, zones, standaloneSlots, lanes, entrances, exits]);
+    }, [selectedEntity, zones, standaloneSlots, laneNodes, laneEdges, entrances, exits]);
 
     useEffect(() => {
         updateHUD();
@@ -406,103 +374,6 @@ const EditorCanvas = ({
     };
 
 
-    const renderLane = (lane) => {
-        const isSelected = selectedEntity && selectedEntity.id === lane.id;
-
-        return (
-            <Group
-                key={lane.id}
-                id={lane.id}
-                x={lane.x}
-                y={lane.y}
-                width={lane.width}
-                height={lane.height}
-                rotation={lane.rotation || 0}
-                draggable={editorMode !== 'PAN'}
-                onDragEnd={(e) => {
-                    const tempLane = { ...lane, x: e.target.x(), y: e.target.y() };
-                    const { x, y } = snapLaneToOthers(tempLane, lanes, scale);
-                    e.target.x(x); e.target.y(y);
-                    onUpdateLane(lane.id, { x, y });
-                }}
-                onTransformEnd={(e) => {
-                    const node = e.target;
-                    const newWidth = Math.round(lane.width * node.scaleX());
-                    const newHeight = Math.round(lane.height * node.scaleY());
-                    node.scaleX(1);
-                    node.scaleY(1);
-                    onUpdateLane(lane.id, {
-                        width: newWidth,
-                        height: newHeight,
-                        x: node.x(),
-                        y: node.y(),
-                        rotation: Math.round(node.rotation())
-                    });
-                }}
-                onClick={(e) => {
-                    if (editorMode === 'PAN') return;
-                    e.cancelBubble = true;
-                    onSelect({ type: 'LANE', id: lane.id });
-                }}
-            >
-                <Rect
-                    width={lane.width}
-                    height={lane.height}
-                    fill="#cbd5e1" // slate-300
-                    stroke={isSelected ? "#2563eb" : "#94a3b8"}
-                    strokeWidth={isSelected ? 2 : 1}
-                // dash={[5, 5]} // Optional: dashed line for lane markings?
-                />
-                {/* Optional: Add a center line or lane markings */}
-                <Line
-                    points={[0, lane.height / 2, lane.width, lane.height / 2]}
-                    stroke="#fff"
-                    strokeWidth={2}
-                    dash={[10, 5]}
-                />
-                <Text
-                    text={`Len: ${Math.round(lane.width / 10)}m`}
-                    x={5}
-                    y={lane.height - 12}
-                    fontSize={10}
-                    fill="#64748b"
-                />
-
-                {isSelected && (
-                    <Text
-                        text={`${((lane.width / GRID_SIZE) * gridRealSize).toFixed(1)}${parkingUnit} × ${((lane.height / GRID_SIZE) * gridRealSize).toFixed(1)}${parkingUnit}`}
-                        x={0}
-                        y={lane.height + 5 / scale}
-                        fontSize={Math.max(10, 14 / scale)}
-                        fill="#374151"
-                        listening={false}
-                    />
-                )}
-                {isSelected && (
-                    <>
-                        <Circle
-                            x={0}
-                            y={lane.height / 2}
-                            radius={6}
-                            fill="#3b82f6"
-                            stroke="#fff"
-                            strokeWidth={2}
-                            listening={false}
-                        />
-                        <Circle
-                            x={lane.width}
-                            y={lane.height / 2}
-                            radius={6}
-                            fill="#3b82f6"
-                            stroke="#fff"
-                            strokeWidth={2}
-                            listening={false}
-                        />
-                    </>
-                )}
-            </Group>
-        );
-    };
 
     const renderScaleBar = () => {
         const niceValues = [1, 2, 5, 10, 25, 50, 100, 200, 500];
@@ -598,6 +469,57 @@ const EditorCanvas = ({
                                 ...draftZone,
                                 points: [...(draftZone?.points || []), x, y]
                             });
+                        } else if (editorMode === 'DRAW_LANE') {
+                            const pos = stage.getPointerPosition();
+                            const transform = stage.getAbsoluteTransform().copy();
+                            transform.invert();
+                            const abs = transform.point(pos);
+
+                            const x = Math.round(abs.x / GRID_SIZE) * GRID_SIZE;
+                            const y = Math.round(abs.y / GRID_SIZE) * GRID_SIZE;
+
+                            const SNAP_DIST = 18;
+                            const nearNode = laneNodes?.find(n =>
+                                Math.hypot(n.x - x, n.y - y) < SNAP_DIST / scale
+                            );
+
+                            if (nearNode) {
+                                if (drawingEdge) {
+                                    if (drawingEdge.fromNodeId !== nearNode.id) {
+                                        onAddEdge({
+                                            id: `edge-${Date.now()}`,
+                                            fromNodeId: drawingEdge.fromNodeId,
+                                            toNodeId: nearNode.id,
+                                            width: 20
+                                        });
+                                        setDrawingEdge(null);
+                                    }
+                                } else {
+                                    setDrawingEdge({ fromNodeId: nearNode.id });
+                                }
+                            } else {
+                                const newNodeId = `node-${Date.now()}`;
+                                onAddNode({ id: newNodeId, x, y });
+
+                                if (drawingEdge) {
+                                    onAddEdge({
+                                        id: `edge-${Date.now()}`,
+                                        fromNodeId: drawingEdge.fromNodeId,
+                                        toNodeId: newNodeId,
+                                        width: 20
+                                    });
+                                }
+                                setDrawingEdge({ fromNodeId: newNodeId });
+                            }
+                        }
+                    }}
+                    onMouseMove={(e) => {
+                        if (editorMode === 'DRAW_LANE') {
+                            const stage = e.target.getStage();
+                            const pos = stage.getPointerPosition();
+                            const transform = stage.getAbsoluteTransform().copy();
+                            transform.invert();
+                            setPointerPos(transform.point(pos));
                         }
                     }}
                     onWheel={handleWheel}
@@ -724,7 +646,25 @@ const EditorCanvas = ({
                             );
                         })}
 
-                        {lanes && lanes.map(lane => renderLane(lane))}
+                        <LaneGraph
+                            laneNodes={laneNodes}
+                            laneEdges={laneEdges}
+                            showNodes={editorMode !== 'PAN'}
+                            selectedEntity={selectedEntity}
+                            editorMode={editorMode}
+                            scale={scale}
+                            gridRealSize={gridRealSize}
+                            parkingUnit={parkingUnit}
+                            onSelect={onSelect}
+                            onUpdateNode={onUpdateNode}
+                            onAddNode={onAddNode}
+                            onAddEdge={onAddEdge}
+                            onDeleteNode={onDeleteNode}
+                            onDeleteEdge={onDeleteEdge}
+                            drawingEdge={drawingEdge}
+                            setDrawingEdge={setDrawingEdge}
+                            pointerPos={pointerPos}
+                        />
 
                         {entrances && entrances.map(ent => renderGate(ent, 'ENTRANCE'))}
                         {exits && exits.map(ext => renderGate(ext, 'EXIT'))}

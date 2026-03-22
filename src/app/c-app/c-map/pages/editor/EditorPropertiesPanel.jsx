@@ -55,6 +55,8 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                     {selectedType === 'SLOT_GROUP' && 'Group Properties'}
                     {selectedType === 'SLOT' && 'Slot Properties'}
                     {selectedType === 'LANE' && 'Lane Properties'}
+                    {selectedType === 'LANE_EDGE' && 'Lane Edge Properties'}
+                    {selectedType === 'LANE_NODE' && 'Lane Node Properties'}
                     {selectedType === 'ENTRANCE' && 'Entrance Properties'}
                     {selectedType === 'EXIT' && 'Exit Properties'}
                 </Title>
@@ -161,6 +163,15 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                     </>
                 ) : selectedType === 'PARKING_GLOBAL' ? (
                     <>
+                        {/* ── PARKING SECTION ── */}
+                        <div style={{
+                            fontSize: 11, fontWeight: 600, color: '#6b7280',
+                            textTransform: 'uppercase', letterSpacing: '0.05em',
+                            marginBottom: 8
+                        }}>
+                            🅿️ Parking Info
+                        </div>
+
                         <Form.Item label="Parking Name">
                             <Input
                                 value={selectedData.parkingName}
@@ -191,6 +202,35 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                                 placeholder="e.g. Phường 8, TP HCM"
                             />
                         </Form.Item>
+
+                        {/* ── FLOOR SECTION ── */}
+                        <div style={{
+                            fontSize: 11, fontWeight: 600, color: '#6b7280',
+                            textTransform: 'uppercase', letterSpacing: '0.05em',
+                            marginTop: 20, marginBottom: 8,
+                            paddingTop: 16, borderTop: '1px solid #f0f0f0'
+                        }}>
+                            🏢 Current Floor
+                        </div>
+
+                        <Form.Item label="Floor Level">
+                            <InputNumber
+                                style={{ width: '100%' }}
+                                value={selectedData.activeFloorLevel}
+                                onChange={(val) => handleChange('activeFloorLevel', val)}
+                                placeholder="e.g. -1 for B1, 1 for ground"
+                            />
+                        </Form.Item>
+                        <Form.Item label="Floor Status">
+                            <Select
+                                value={selectedData.floorStatus !== undefined ? selectedData.floorStatus : 1}
+                                onChange={(val) => handleChange('floorStatus', val)}
+                            >
+                                <Option value={0}>Inactive</Option>
+                                <Option value={1}>Active</Option>
+                                <Option value={2}>Maintenance</Option>
+                            </Select>
+                        </Form.Item>
                         <Form.Item label="Measurement Unit">
                             <Select
                                 value={selectedData.parkingUnit}
@@ -199,14 +239,6 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                                 <Option value="m">Meters (m)</Option>
                                 <Option value="ft">Feet (ft)</Option>
                             </Select>
-                        </Form.Item>
-                        <Form.Item label="Current Floor Level">
-                            <InputNumber
-                                style={{ width: '100%' }}
-                                value={selectedData.activeFloorLevel}
-                                onChange={(val) => handleChange('activeFloorLevel', val)}
-                                placeholder="e.g. -1 for B1, 1 for ground"
-                            />
                         </Form.Item>
                         <Form.Item label={`1 grid cell = [ ${selectedData.gridRealSize || 2.5} ] ${selectedData.parkingUnit}`}>
                             <InputNumber
@@ -300,6 +332,54 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                 )}
 
                 {
+                    selectedType === 'LANE_EDGE' && (
+                        <>
+                            <Form.Item label="Edge Width / Thickness (px)">
+                                <InputNumber
+                                    style={{ width: '100%' }}
+                                    min={10} max={60}
+                                    value={selectedData.width ?? 20}
+                                    onChange={(val) => handleChange('width', val)}
+                                />
+                            </Form.Item>
+                            <Form.Item label="Connected Nodes">
+                                <Text code>{selectedData.fromNodeId}</Text>
+                                <span style={{ margin: '0 8px' }}>↔</span>
+                                <Text code>{selectedData.toNodeId}</Text>
+                            </Form.Item>
+                        </>
+                    )
+                }
+
+                {
+                    selectedType === 'LANE_NODE' && (
+                        <>
+                            <div className="form-row" style={{ display: 'flex', gap: '12px' }}>
+                                <Form.Item label="X Position" style={{ flex: 1 }}>
+                                    <InputNumber style={{ width: '100%' }} value={selectedData.x} disabled />
+                                </Form.Item>
+                                <Form.Item label="Y Position" style={{ flex: 1 }}>
+                                    <InputNumber style={{ width: '100%' }} value={selectedData.y} disabled />
+                                </Form.Item>
+                            </div>
+                            <Form.Item label="Connected Edges">
+                                <Text strong>{selectedData._connectedCount ?? 0}</Text>
+                                {selectedData._connectedCount === 1 && (
+                                    <div style={{ color: '#d97706', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <InfoCircleOutlined /> Dead-end node
+                                    </div>
+                                )}
+                                {(selectedData._connectedCount === 0 || selectedData._connectedCount === undefined) && (
+                                    <div style={{ color: '#dc2626', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <InfoCircleOutlined /> Isolated node
+                                    </div>
+                                )}
+                            </Form.Item>
+                        </>
+                    )
+                }
+
+                {
                     (selectedType === 'LANE' || selectedType === 'ENTRANCE' || selectedType === 'EXIT') && (
                         <>
                             <div className="form-row" style={{ display: 'flex', gap: '12px' }}>
@@ -368,7 +448,7 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
             </Form >
 
 
-            {(selectedType === 'LANE' || selectedType === 'ENTRANCE' || selectedType === 'EXIT' || selectedType === 'ZONE' || selectedType === 'SLOT_GROUP' || selectedType === 'SLOT') && (
+            {(selectedType === 'LANE' || selectedType === 'LANE_NODE' || selectedType === 'LANE_EDGE' || selectedType === 'ENTRANCE' || selectedType === 'EXIT' || selectedType === 'ZONE' || selectedType === 'SLOT_GROUP' || selectedType === 'SLOT') && (
                 <div style={{ marginTop: '20px', borderTop: '1px solid #f0f0f0', paddingTop: '16px' }}>
                     <Button
                         danger
@@ -377,7 +457,9 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                     >
                         {selectedType === 'SLOT_GROUP' ? 'Delete Group' :
                             selectedType === 'ZONE' ? 'Delete Zone' :
-                                selectedType === 'SLOT' ? 'Delete Slot' : 'Delete Element'}
+                                selectedType === 'SLOT' ? 'Delete Slot' :
+                                    selectedType === 'LANE_NODE' ? 'Delete Node' :
+                                        selectedType === 'LANE_EDGE' ? 'Delete Edge' : 'Delete Element'}
                     </Button>
                 </div>
             )}

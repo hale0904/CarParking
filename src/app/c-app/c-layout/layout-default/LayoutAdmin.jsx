@@ -5,14 +5,12 @@ import {
   UserOutlined,
   MenuUnfoldOutlined,
   MenuFoldOutlined,
-  DashboardOutlined,
   EnvironmentOutlined,
   ThunderboltOutlined,
   BarChartOutlined,
-  CreditCardOutlined,
-  BellOutlined,
   LogoutOutlined,
   UpOutlined,
+  AlertOutlined,
 } from '@ant-design/icons';
 import { Link, Outlet, useNavigate } from 'react-router-dom';
 
@@ -74,34 +72,24 @@ const AdminFooter = ({ collapsed }) => {
 const MenuList = () => {
   const items = [
     {
-      key: 'dashboard',
-      icon: <DashboardOutlined />,
-      label: <Link to="/admin/dashboard">Dashboard</Link>,
-    },
-    {
-      key: 'maps',
+      key: 'map-manage',
       icon: <EnvironmentOutlined />,
-      label: <Link to="/admin/parking-map">Parking Map</Link>,
+      label: <Link to="/admin/parking-map">Manage Map</Link>,
     },
     {
-      key: 'iot',
+      key: 'devices',
       icon: <ThunderboltOutlined />,
-      label: <Link to="/admin/dashboard/iot-alerts">IoT Devices</Link>,
+      label: <Link to="/admin/devices">IoT Devices</Link>,
     },
     {
-      key: 'reports',
+      key: 'dashboard',
       icon: <BarChartOutlined />,
-      label: <Link to="/admin/statistics">Report & Statistic</Link>,
+      label: <Link to="/admin/dashboard">Dashboard & Reports</Link>,
     },
     {
-      key: 'payment',
-      icon: <CreditCardOutlined />,
-      label: <Link to="/admin/payment">Payment</Link>,
-    },
-    {
-      key: 'notifications',
-      icon: <BellOutlined />,
-      label: <Link to="/admin/notifications">Notifications</Link>,
+      key: 'barrier',
+      icon: <AlertOutlined />,
+      label: <Link to="/admin/barrier-control">Barrier Control</Link>,
     },
   ];
 
@@ -110,7 +98,7 @@ const MenuList = () => {
       theme="light"
       mode="inline"
       className="menu-bar"
-      defaultSelectedKeys={['dashboard']}
+      defaultSelectedKeys={['monitor']}
       items={items}
     />
   );

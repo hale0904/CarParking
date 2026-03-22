@@ -17,6 +17,62 @@ const pieData = [
     { name: 'RESERVED', value: 16, color: '#faad14' },
 ];
 
+const parseLegacyLanesToGraph = (lanesApiData, apiNodes = []) => {
+    const laneNodes = [];
+    const laneEdges = [];
+
+    // Build _id → code map to resolve MongoDB ObjectId references
+    const mongoIdToCode = {};
+    apiNodes.forEach(n => {
+        laneNodes.push({ id: n.code, x: n.positionX, y: n.positionY });
+        if (n._id) mongoIdToCode[n._id] = n.code;
+    });
+
+    lanesApiData.forEach((l, i) => {
+        const pts = l.points;
+        const w = l.laneWidth || l.height || 20;
+        if (!pts || pts.length < 4) return;
+
+        // Resolve: if fromNodeId is a MongoDB _id, convert to code
+        const fromNodeId = mongoIdToCode[l.fromNodeId] || l.fromNodeId;
+        const toNodeId   = mongoIdToCode[l.toNodeId]   || l.toNodeId;
+
+        if (fromNodeId && toNodeId) {
+            if (!laneNodes.find(n => n.id === fromNodeId))
+                laneNodes.push({ id: fromNodeId, x: pts[0], y: pts[1] });
+            if (!laneNodes.find(n => n.id === toNodeId))
+                laneNodes.push({ id: toNodeId, x: pts[pts.length - 2], y: pts[pts.length - 1] });
+
+            if (!laneEdges.find(e => e.fromNodeId === fromNodeId && e.toNodeId === toNodeId)) {
+                laneEdges.push({ id: l.code, fromNodeId, toNodeId, width: w });
+            }
+        } else {
+            // Fallback for legacy lanes without node references
+            const TOLERANCE = 15;
+            let prevNodeId = null;
+            for (let j = 0; j < pts.length; j += 2) {
+                const x = pts[j], y = pts[j + 1];
+                let node = laneNodes.find(n => Math.hypot(n.x - x, n.y - y) < TOLERANCE);
+                if (!node) {
+                    node = { id: `node-${l.code || i}-${j}`, x, y };
+                    laneNodes.push(node);
+                }
+                if (prevNodeId && prevNodeId !== node.id) {
+                    if (!laneEdges.find(e =>
+                        (e.fromNodeId === prevNodeId && e.toNodeId === node.id) ||
+                        (e.fromNodeId === node.id && e.toNodeId === prevNodeId)
+                    )) {
+                        laneEdges.push({ id: `edge-${l.code || i}-${j}`, fromNodeId: prevNodeId, toNodeId: node.id, width: w });
+                    }
+                }
+                prevNodeId = node.id;
+            }
+        }
+    });
+
+    return { laneNodes, laneEdges };
+};
+
 const FloorMapView = ({ floor, metadata }) => {
     const [scale, setScale] = useState(0.5);
     const [editorMode] = useState("PAN")
@@ -25,7 +81,8 @@ const FloorMapView = ({ floor, metadata }) => {
         <EditorCanvas
             zones={floor.zones}
             standaloneSlots={floor.standaloneSlots || []}
-            lanes={floor.lanes || []}
+            laneNodes={floor.laneNodes || []}
+            laneEdges={floor.laneEdges || []}
             entrances={floor.entrances || []}
             exits={floor.exits || []}
             boundary={floor.boundary || { points: [], closed: false }}
@@ -75,14 +132,7 @@ const DashboardPage = () => {
                             name: floor.nameFloor,
                             boundary: floor.boundary || { points: [], closed: false },
                             standaloneSlots: [],
-                            lanes: (floor.lanes || []).map(l => ({
-                                id: l.code,
-                                x: l.positionX,
-                                y: l.positionY,
-                                width: l.witdh,
-                                height: l.height,
-                                rotation: l.rotation
-                            })),
+                            ...parseLegacyLanesToGraph(floor.lanes || [], floor.laneNodes || []),
                             entrances: (floor.entrances || []).map(e => ({
                                 id: e.code,
                                 x: e.positionX,
