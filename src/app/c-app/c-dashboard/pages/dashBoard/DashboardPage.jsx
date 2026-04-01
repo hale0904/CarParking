@@ -3,19 +3,12 @@ import { Typography, Row, Col, Card, Space, Tag, Divider, Tabs, ConfigProvider, 
 import { ExpandOutlined } from '@ant-design/icons';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import axiosClient from '../../../../c-lib/axios/axiosClient.service';
-import { PARKING_API } from '../../../../c-lib/constants/auth-api.constant';
+import { PARKING_API, STATISTICAL_API } from '../../../../c-lib/constants/auth-api.constant';
 import EditorCanvas from '../../../c-map/pages/editor/EditorCanvas';
 import { io } from "socket.io-client";
 
 
 const { Title, Text } = Typography;
-
-const pieData = [
-    { name: 'AVAILABLE', value: 155, color: '#52c41a' },
-    { name: 'OCCUPIED', value: 194, color: '#595959' },
-    { name: 'MALFUNCTION', value: 23, color: '#ff4d4f' },
-    { name: 'RESERVED', value: 16, color: '#faad14' },
-];
 
 const parseLegacyLanesToGraph = (lanesApiData, apiNodes = []) => {
     const laneNodes = [];
@@ -35,7 +28,7 @@ const parseLegacyLanesToGraph = (lanesApiData, apiNodes = []) => {
 
         // Resolve: if fromNodeId is a MongoDB _id, convert to code
         const fromNodeId = mongoIdToCode[l.fromNodeId] || l.fromNodeId;
-        const toNodeId   = mongoIdToCode[l.toNodeId]   || l.toNodeId;
+        const toNodeId = mongoIdToCode[l.toNodeId] || l.toNodeId;
 
         if (fromNodeId && toNodeId) {
             if (!laneNodes.find(n => n.id === fromNodeId))
@@ -112,9 +105,34 @@ const FloorMapView = ({ floor, metadata }) => {
 const DashboardPage = () => {
     const socketRef = useRef(null);
     const [mapData, setMapData] = useState(null);
+    const [statsData, setStatsData] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
+        const fetchStats = async () => {
+            try {
+                // Lấy real-time stats từ mapData thay vì API statistical
+                // API statistical dùng range time — không phù hợp cho real-time status
+                const res = await axiosClient.post(STATISTICAL_API.GET_STATISTICAL, {
+                    expectedArrivalTime: startOfDay.toISOString(),
+                    expectedLeaveTime: now.toISOString(),
+                    zoneIds: [],
+                });
+
+                const zones = res.data?.data || [];
+
+                const aggregated = zones.reduce((acc, zone) => ({
+                    totalSlots: acc.totalSlots + zone.totalSlots,
+                    available: acc.available + zone.empty,
+                    occupied: acc.occupied + zone.used,
+                }), { totalSlots: 0, available: 0, occupied: 0 });
+
+                setStatsData(aggregated);
+            } catch (err) {
+                console.error('Stats error:', err.response?.data);
+            }
+        };
+
         const fetchMap = async () => {
             try {
                 const res = await axiosClient.post(PARKING_API.GET_LIST, {});
@@ -189,9 +207,13 @@ const DashboardPage = () => {
 
         // ✅ Gọi lần đầu ngay lập tức
         fetchMap();
+        fetchStats();
 
-        // ✅ Sau đó polling mỗi 3 giây
-        const interval = setInterval(fetchMap, 2000);
+        // ✅ Sau đó polling mỗi 2 giây
+        const interval = setInterval(() => {
+            fetchMap();
+            fetchStats();
+        }, 2000);
 
         // ✅ Cleanup khi unmount — đặt ở useEffect, không phải trong fetchMap
         return () => clearInterval(interval);
@@ -243,6 +265,23 @@ const DashboardPage = () => {
 
     }, []);
 
+    const allSlotsGlobal = mapData
+        ? mapData.parking.floors.flatMap(f =>
+            f.zones.flatMap(z =>
+                (z.slotGroups || []).flatMap(g => g.slots || [])
+            )
+        )
+        : [];
+
+    const pieData = [
+        { name: 'AVAILABLE', value: statsData?.available ?? allSlotsGlobal.filter(s => s.status === 'available').length, color: '#52c41a' },
+        { name: 'OCCUPIED', value: statsData?.occupied ?? allSlotsGlobal.filter(s => s.status === 'occupied').length, color: '#595959' },
+        { name: 'MALFUNCTION', value: allSlotsGlobal.filter(s => s.status === 'inactive').length, color: '#ff4d4f' },
+        { name: 'RESERVED', value: allSlotsGlobal.filter(s => s.status === 'reserved').length, color: '#faad14' },
+    ];
+
+    const totalDisplay = statsData?.totalSlots ?? allSlotsGlobal.length;
+
     return (
         <Spin spinning={isLoading}>
             <div style={{ padding: 24, background: '#f0f2f5', minHeight: '100vh' }}>
@@ -283,7 +322,9 @@ const DashboardPage = () => {
                                         transform: 'translate(-50%, -50%)',
                                         textAlign: 'center'
                                     }}>
-                                        <div style={{ fontSize: 24, fontWeight: 'bold', color: 'white', lineHeight: 1 }}>388</div>
+                                        <div style={{ fontSize: 24, fontWeight: 'bold', color: 'white', lineHeight: 1 }}>
+                                            {totalDisplay}
+                                        </div>
                                         <div style={{ fontSize: 12, color: '#d9d9d9' }}>Total slot</div>
                                     </div>
                                 </div>
@@ -295,7 +336,9 @@ const DashboardPage = () => {
                                                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: item.color, marginRight: 8 }} />
                                                 <Text style={{ color: 'white' }}>{item.name}</Text>
                                             </div>
-                                            <Text style={{ color: 'white', fontWeight: 'bold' }}>{item.value}</Text>
+                                            <Text style={{ color: 'white', fontWeight: 'bold' }}>
+                                                {typeof item.value === 'number' ? item.value : 0}
+                                            </Text>
                                         </div>
                                     ))}
                                 </div>
@@ -315,15 +358,15 @@ const DashboardPage = () => {
                             <Space direction="vertical" size={16} style={{ width: '100%' }}>
                                 <div style={{ display: 'flex', alignItems: 'center' }}>
                                     <Tag color="blue" style={{ width: 14, height: 14, padding: 0, marginRight: 8, borderRadius: 2 }} />
-                                    <Text>Vehicles In: 200</Text>
+                                    <Text>Vehicles In (occupied): {allSlotsGlobal.filter(s => s.status === 'occupied').length}</Text>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center' }}>
                                     <Tag color="blue" style={{ width: 14, height: 14, padding: 0, marginRight: 8, borderRadius: 2 }} />
-                                    <Text>Vehicles Out: 6</Text>
+                                    <Text>Vehicles Available: {allSlotsGlobal.filter(s => s.status === 'available').length}</Text>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center' }}>
                                     <Tag color="blue" style={{ width: 14, height: 14, padding: 0, marginRight: 8, borderRadius: 2 }} />
-                                    <Text>Average parking duration: 2 (hour)</Text>
+                                    <Text>Total Slots: {allSlotsGlobal.length}</Text>
                                 </div>
                             </Space>
                         </Card>
