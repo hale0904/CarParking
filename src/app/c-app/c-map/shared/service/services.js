@@ -1,4 +1,4 @@
-import apiHelper from '../../../../c-lib/helpers/api.helper';
+import axiosClient from '../../../../c-lib/axios/axiosClient.service';
 import { PARKING_API } from '../../../../c-lib/constants/auth-api.constant';
 
 /**
@@ -17,23 +17,23 @@ import { PARKING_API } from '../../../../c-lib/constants/auth-api.constant';
 
 const ParkingService = {
   getList(params) {
-    return apiHelper.post(PARKING_API.GET_LIST, {
+    return axiosClient.post(PARKING_API.GET_LIST, {
       params, // axios sẽ tự convert thành query string
     });
   },
 
   getListFloorMap(params) {
-    return apiHelper.post(PARKING_API.GET_LIST_FLOOR, {
+    return axiosClient.post(PARKING_API.GET_LIST_FLOOR, {
       params,
     });
   },
 
   saveFloor(data) {
-    return apiHelper.post(PARKING_API.UPDATE_FLOOR, data);
+    return axiosClient.post(PARKING_API.UPDATE_FLOOR, data);
   },
 
   deleteFloor(parkingCode, items) {
-    return apiHelper.post(PARKING_API.DELETE_FLOOR, {
+    return axiosClient.post(PARKING_API.DELETE_FLOOR, {
       parkingCode,
       items,
     });
@@ -42,17 +42,17 @@ const ParkingService = {
 
 
   saveParking(data) {
-    return apiHelper.post(PARKING_API.UPDATE, data);
+    return axiosClient.post(PARKING_API.UPDATE, data);
   },
 
   updateParkingStatus(items) {
-    return apiHelper.post(PARKING_API.UPDATE_STATUS, {
+    return axiosClient.post(PARKING_API.UPDATE_STATUS, {
       items,
     });
   },
 
   deleteParking(items) {
-    return apiHelper.delete(PARKING_API.DELETE, {
+    return axiosClient.delete(PARKING_API.DELETE, {
       data: {
         items,
       },

@@ -119,7 +119,7 @@ const DashboardPage = () => {
                     zoneIds: [],
                 });
 
-                const zones = res.data?.data || [];
+                const zones = res?.data || res || [];
 
                 const aggregated = zones.reduce((acc, zone) => ({
                     totalSlots: acc.totalSlots + zone.totalSlots,
@@ -136,7 +136,7 @@ const DashboardPage = () => {
         const fetchMap = async () => {
             try {
                 const res = await axiosClient.post(PARKING_API.GET_LIST, {});
-                const list = res.data;
+                const list = res?.data || res;
                 console.log("RAW API DATA:", list);
 
                 if (!list || list.length === 0) return;

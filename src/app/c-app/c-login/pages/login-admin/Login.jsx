@@ -1,88 +1,146 @@
 import './login.scss';
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import slider1 from '~/assets/slider1.jpg';
 import slider2 from '~/assets/slider2.jpg';
 import slider3 from '~/assets/slider3.png';
 import logo from '~/assets/smart_parking_logo.png';
-import { Button, Form, Carousel } from '../../../../c-lib/index';
+import { Carousel, Typography, Form, Input, Button, notification, ConfigProvider } from 'antd';
+import { UserOutlined, LockOutlined, RightOutlined } from '@ant-design/icons';
 import LoginService from '../../shared/service/login.service';
+import { useState } from 'react';
+import AuthHelper from '../../../../c-lib/auth/auth.helper';
+
+const { Title, Text } = Typography;
 
 function Login001() {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
 
-  // state
-  const [account, setAccount] = useState({
-    email: '',
-    password: '',
-  });
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setAccount((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  const handleLogin = async () => {
+  const handleFinish = async (values) => {
+    setLoading(true);
     try {
-      const res = await LoginService(account);
+      const res = await LoginService(values);
 
-      localStorage.setItem('accessToken', res.accessToken);
-      localStorage.setItem('refreshToken', res.refreshToken);
+      AuthHelper.setTokens(res);
 
-      alert('Đăng nhập thành công');
+      notification.success({
+        message: 'Welcome Back!',
+        description: 'Đăng nhập thành công vào hệ thống Smart Parking.',
+        placement: 'topRight',
+      });
       navigate('/admin');
     } catch (err) {
-      alert(err?.response?.data?.message || 'Đăng nhập thất bại');
+      notification.error({
+        message: 'Đăng nhập thất bại',
+        description: err?.response?.data?.message || 'Vui lòng kiểm tra lại thông tin đăng nhập.',
+        placement: 'topRight',
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="login-container">
-      {/* LEFT */}
-      <div className="login-left">
-        <Carousel fade interval={3000} pause={false} controls={false} indicators>
-          <Carousel.Item>
-            <img className="d-block w-100" src={slider1} alt="slide 1" />
-          </Carousel.Item>
-          <Carousel.Item>
-            <img className="d-block w-100" src={slider2} alt="slide 2" />
-          </Carousel.Item>
-          <Carousel.Item>
-            <img className="d-block w-100" src={slider3} alt="slide 3" />
-          </Carousel.Item>
-        </Carousel>
-      </div>
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: '#4F46E5',
+          borderRadius: 12,
+          controlHeight: 48,
+        },
+        components: {
+          Input: {
+            activeBorderColor: '#4F46E5',
+            hoverBorderColor: '#4F46E5',
+          },
+        },
+      }}
+    >
+      <div className="modern-login-container">
+        {/* Background Gradient Animation */}
+        <div className="bg-gradient-mesh"></div>
 
-      {/* RIGHT */}
-      <div className="login-right">
-        <div className="login-title">
-          <img className="logo" src={logo} alt="Smart Parking" />
-          <h1>ĐĂNG NHẬP</h1>
+        <div className="login-content-wrapper">
+          <div className="login-glass-card">
+            {/* LEFT: Branding/Hero */}
+            <div className="login-hero-section">
+              <div className="hero-overlay">
+                <div className="hero-content">
+                  <Title level={2} className="hero-title">Smart Parking</Title>
+                  <Text className="hero-subtitle">Modernizing Urban Mobility & Gate Management System.</Text>
+                </div>
+              </div>
+              <Carousel autoplay effect="fade" pauseOnHover={false} dots={false} className="hero-carousel" autoplaySpeed={4000}>
+                <div><div className="slide-image" style={{ backgroundImage: `url(${slider1})` }} /></div>
+                <div><div className="slide-image" style={{ backgroundImage: `url(${slider2})` }} /></div>
+                <div><div className="slide-image" style={{ backgroundImage: `url(${slider3})` }} /></div>
+              </Carousel>
+            </div>
+
+            {/* RIGHT: Login Form */}
+            <div className="login-form-section">
+              <div className="form-inner">
+                <div className="form-header">
+                  <img src={logo} alt="Smart Parking Logo" className="brand-logo" />
+                  <Title level={3} className="form-title">Đăng Nhập</Title>
+                  <Text type="secondary" className="form-desc">Vui lòng đăng nhập để truy cập Admin Dashboard.</Text>
+                </div>
+
+                <Form
+                  name="login_form"
+                  layout="vertical"
+                  size="large"
+                  onFinish={handleFinish}
+                  requiredMark={false}
+                >
+                  <Form.Item
+                    name="email"
+                    label="Tên Đăng Nhập"
+                    rules={[{ required: true, message: 'Vui lòng nhập tên đăng nhập!' }]}
+                  >
+                    <Input
+                      variant="filled"
+                      prefix={<UserOutlined className="input-icon" />}
+                      placeholder="admin@smartparking.com"
+                      className="enhanced-input"
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="password"
+                    label="Mật Khẩu"
+                    rules={[{ required: true, message: 'Vui lòng nhập mật khẩu!' }]}
+                  >
+                    <Input.Password
+                      variant="filled"
+                      prefix={<LockOutlined className="input-icon" />}
+                      placeholder="••••••••"
+                      className="enhanced-input"
+                    />
+                  </Form.Item>
+
+                  <Form.Item style={{ marginTop: '2rem', marginBottom: '0.5rem' }}>
+                    <Button
+                      type="primary"
+                      htmlType="submit"
+                      className="login-submit-btn"
+                      loading={loading}
+                      block
+                    >
+                      Tiếp Tục <RightOutlined className="submit-icon" />
+                    </Button>
+                  </Form.Item>
+                </Form>
+
+                <div className="form-footer">
+                  <Text type="secondary">Quên mật khẩu? Vui lòng liên hệ IT Support.</Text>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-
-        <Form.Group className="mb-3">
-          <Form.Label>Tên đăng nhập</Form.Label>
-          <Form.Control name="email" value={account.email} onChange={handleChange} />
-        </Form.Group>
-
-        <Form.Group className="mb-3">
-          <Form.Label>Mật khẩu</Form.Label>
-          <Form.Control
-            name="password"
-            type="password"
-            value={account.password}
-            onChange={handleChange}
-          />
-        </Form.Group>
-
-        <Button variant="warning" className="LoginBtn" onClick={handleLogin}>
-          Đăng nhập
-        </Button>
       </div>
-    </div>
+    </ConfigProvider>
   );
 }
 

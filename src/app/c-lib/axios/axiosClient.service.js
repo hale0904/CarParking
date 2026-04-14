@@ -1,5 +1,6 @@
 import axios from 'axios';
 import AuthHelper from '../auth/auth.helper';
+import { attachRefreshInterceptor } from './axiosRefresh.interceptor';
 
 function createAxiosClient() {
   const instance = axios.create({
@@ -11,22 +12,19 @@ function createAxiosClient() {
 
   // REQUEST
   instance.interceptors.request.use((config) => {
-    // const accessToken = AuthHelper.getAccessToken();
+    const accessToken = AuthHelper.getAccessToken();
 
-    // if (accessToken) {
-    //   config.headers.Authorization = `Bearer ${accessToken}`;
-    // }
+    if (accessToken) {
+      config.headers.Authorization = `Bearer ${accessToken}`;
+    }
 
     return config;
   });
 
-  // RESPONSE
-  instance.interceptors.response.use(
-    (response) => response.data,
-    (error) => Promise.reject(error)
-  );
-
   return instance;
 }
 
-export default createAxiosClient();
+const axiosClient = createAxiosClient();
+attachRefreshInterceptor(axiosClient);
+
+export default axiosClient;

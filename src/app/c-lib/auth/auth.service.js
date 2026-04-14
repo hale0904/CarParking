@@ -1,7 +1,7 @@
-import { apiHelper } from '../helpers/api.helper';
+import axiosClient from '../axios/axiosClient.service';
 
 export function refreshTokenService(refreshToken) {
-  return apiHelper.post('/auth/refresh-token', {
-    refreshToken,
+  return axiosClient.post('/auth/refresh-token', { refreshToken }, {
+    _isRefreshRequest: true
   });
 }

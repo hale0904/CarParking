@@ -1,13 +1,14 @@
 import React from 'react';
-import { Empty, Form, Input, InputNumber, Select, Button, Tag, Typography, ColorPicker } from 'antd';
+import { Empty, Form, Input, InputNumber, Select, Button, Tag, Typography, ColorPicker, message } from 'antd';
 import { ReloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
 
-import { MOCK_SENSORS } from '../../../../../mocks/sensors';
+import axiosClient from '../../../../c-lib/axios/axiosClient.service';
+import { PARKING_API } from '../../../../c-lib/constants/auth-api.constant';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onUpdate, onUpdateGroupedSlot, onUpdateSlot, onCycleStatus, onDelete, assignedSensorIds = [] }) => {
+const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onUpdate, onUpdateGroupedSlot, onUpdateSlot, onCycleStatus, onDelete, assignedSensorIds = [], sensors = [] }) => {
     if (!selectedData) {
         return (
             <div className="empty-props">
@@ -81,58 +82,65 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                             <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>Trạng thái cập nhật tự động từ cảm biến IoT</div>
                         </Form.Item>
 
-                        <Form.Item label="IoT Sensor ID" style={{ marginBottom: '8px' }}>
+                        <Form.Item label="IoT Sensor" style={{ marginBottom: '8px' }}>
                             <Select
                                 showSearch
-                                value={selectedData.sensorId || ''}
+                                value={selectedData.sensorCode || ''} // sensorCode
                                 placeholder="-- Chọn sensor --"
                                 optionFilterProp="children"
-                                onChange={(val) => {
+                                optionLabelProp="label"
+                                onChange={async (val) => {
                                     const newVal = val === '' ? null : val;
-                                    const selectedSensor = MOCK_SENSORS.find(s => s.id === newVal);
+                                    const oldSensorCode = selectedData.sensorCode; // sensorCode
+                                    const updates = { sensorCode: newVal }; // sensorCode
 
-                                    const updates = { sensorId: newVal };
-                                    if (selectedSensor) {
-                                        updates.sensorStatus = selectedSensor.sensorStatus;
+                                    const updateSensorSlotId = async (sensorIdToUpdate, mappedSlotId) => {
+                                        if (!sensorIdToUpdate) return;
+                                        try {
+                                            const payload = { sensorCode: sensorIdToUpdate, slotId: mappedSlotId }; // sensorCode
+                                            console.log("Updating sensor:", payload);
+                                            const res = await axiosClient.post(PARKING_API.UPDATE_SENSOR, payload);
+                                            console.log("Update response:", res);
+                                        } catch (e) {
+                                            console.error("Sensor update fail:", e);
+                                            message.error(`Lỗi cập nhật sensor vào slot`);
+                                        }
+                                    };
+
+                                    // If unassigning or switching to a new sensor, clear the old one first
+                                    if (oldSensorCode && oldSensorCode !== newVal) { // sensorCode
+                                        await updateSensorSlotId(oldSensorCode, null); // sensorCode
+                                    }
+
+                                    // If assigning a new sensor
+                                    if (newVal) {
+                                        await updateSensorSlotId(newVal, selectedData.mongoId || selectedData.id); // sensorCode
+                                        message.success(`Đã gán sensor thành công vào slot`);
+                                    } else if (!newVal && oldSensorCode) { // sensorCode
+                                        message.success(`Đã gỡ sensor khỏi slot`);
                                     }
 
                                     if (onUpdateSlot) {
                                         onUpdateSlot(selectedData.id, updates);
                                     } else {
-                                        handleChange('sensorId', updates.sensorId);
-                                        if (updates.sensorStatus !== undefined) {
-                                            handleChange('sensorStatus', updates.sensorStatus);
-                                        }
+                                        handleChange('sensorCode', updates.sensorCode); // sensorCode
                                     }
                                 }}
                                 style={{ width: '100%' }}
                             >
                                 <Option value="">-- Chọn sensor --</Option>
-                                {MOCK_SENSORS.map(sensor => {
-                                    const isAssignedToOther = assignedSensorIds.includes(sensor.id) && sensor.id !== selectedData.sensorId;
-                                    if (isAssignedToOther) return null;
-
-                                    return (
-                                        <Option key={sensor.id} value={sensor.id}>
-                                            {sensor.name} — {sensor.zone}
+                                {sensors
+                                    .filter(sensor =>
+                                        // Hiển thị nếu: chưa được assign cho ai
+                                        // HOẶC đang được assign cho chính slot đang chọn
+                                        sensor.categoryId?.code === 'CA001' && (!assignedSensorIds.includes(sensor.code) || sensor.code === selectedData.sensorCode) // sensorCode
+                                    )
+                                    .map(sensor => ( // sensorCode
+                                        <Option key={sensor.id} value={sensor.code} label={sensor.code}>
+                                            {sensor.code}
                                         </Option>
-                                    );
-                                })}
-                            </Select>
-                        </Form.Item>
-                        <Form.Item label="Sensor Status" style={{ marginBottom: '16px' }}>
-                            <Select
-                                value={selectedData.sensorStatus || ''}
-                                onChange={(val) => {
-                                    const newVal = val === '' ? null : val;
-                                    if (onUpdateSlot) onUpdateSlot(selectedData.id, { sensorStatus: newVal });
-                                    else handleChange('sensorStatus', newVal);
-                                }}
-                                style={{ width: '100%' }}
-                            >
-                                <Option value="">-- None --</Option>
-                                <Option value="online">Online</Option>
-                                <Option value="offline">Offline</Option>
+                                    ))
+                                }
                             </Select>
                         </Form.Item>
 

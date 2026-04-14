@@ -11,7 +11,3 @@ export const router = createBrowserRouter([
     element: <NotFound />,
   },
 ]);
-console.log('authRoutes:', authRoutes);
-console.log('ROUTING FILE RUN');
-
-console.log('layout', layoutRoutes);

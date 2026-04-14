@@ -11,8 +11,11 @@ import {
   LogoutOutlined,
   UpOutlined,
   AlertOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons';
 import { Link, Outlet, useNavigate } from 'react-router-dom';
+
+export const LanguageContext = React.createContext('en');
 
 const { Header, Sider, Content } = Layout;
 
@@ -32,13 +35,20 @@ const Logo = ({ collapsed, toggleCollapsed }) => (
   </div>
 );
 
-const AdminFooter = ({ collapsed }) => {
+const AdminFooter = ({ collapsed, language, setLanguage }) => {
   const navigate = useNavigate();
 
   const items = [
     {
+      key: 'language',
+      label: language === 'en' ? 'Language: EN 🇬🇧' : 'Ngôn ngữ: VI 🇻🇳',
+      icon: <GlobalOutlined />,
+      onClick: () => setLanguage(language === 'en' ? 'vi' : 'en'),
+    },
+    { type: 'divider' },
+    {
       key: 'logout',
-      label: 'Đăng xuất',
+      label: language === 'en' ? 'Logout' : 'Đăng xuất',
       icon: <LogoutOutlined />,
       danger: true,
       onClick: () => navigate('/'),
@@ -57,7 +67,7 @@ const AdminFooter = ({ collapsed }) => {
             <>
               <div className="admin-info">
                 <span className="admin-name">Admin</span>
-                <span className="admin-role">Super User</span>
+                <span className="admin-role">{language === 'en' ? 'Super User' : 'Quản trị viên'}</span>
               </div>
               <UpOutlined className="dropdown-arrow" />
             </>
@@ -69,27 +79,44 @@ const AdminFooter = ({ collapsed }) => {
 };
 
 /* ---------- Sidebar Menu ---------- */
-const MenuList = () => {
+const MenuList = ({ language }) => {
+  const menuLabels = {
+    en: {
+      manageMap: 'Manage Map',
+      iotDevices: 'IoT Devices',
+      barrierControl: 'Barrier Control',
+      dashboard: 'Dashboard & Reports',
+    },
+    vi: {
+      manageMap: 'Quản lý bản đồ',
+      iotDevices: 'Thiết bị IoT',
+      barrierControl: 'Kiểm soát barrier',
+      dashboard: 'Bảng điều khiển & Báo cáo',
+    },
+  };
+
+  const labels = menuLabels[language] || menuLabels.en;
+
   const items = [
     {
       key: 'map-manage',
       icon: <EnvironmentOutlined />,
-      label: <Link to="/admin/parking-map">Manage Map</Link>,
+      label: <Link to="/admin/parking-map">{labels.manageMap}</Link>,
     },
     {
       key: 'devices',
       icon: <ThunderboltOutlined />,
-      label: <Link to="/admin/devices">IoT Devices</Link>,
-    },
-    {
-      key: 'dashboard',
-      icon: <BarChartOutlined />,
-      label: <Link to="/admin/dashboard">Dashboard & Reports</Link>,
+      label: <Link to="/admin/devices">{labels.iotDevices}</Link>,
     },
     {
       key: 'barrier',
       icon: <AlertOutlined />,
-      label: <Link to="/admin/barrier-control">Barrier Control</Link>,
+      label: <Link to="/admin/barrier-control">{labels.barrierControl}</Link>,
+    },
+    {
+      key: 'dashboard',
+      icon: <BarChartOutlined />,
+      label: <Link to="/admin/dashboard">{labels.dashboard}</Link>,
     },
   ];
 
@@ -107,59 +134,62 @@ const MenuList = () => {
 /* ---------- Main Layout ---------- */
 const LayoutAdmin = () => {
   const [collapsed, setCollapsed] = useState(false);
+  const [language, setLanguage] = useState('en');
   const sidebarWidth = 260;
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Sider
-        width={sidebarWidth}
-        collapsedWidth={80}
-        collapsible
-        trigger={null}
-        collapsed={collapsed}
-        className="modern-sidebar"
-        theme="light"
-        style={{
-          position: 'fixed',
-          left: 0,
-          top: 0,
-          bottom: 0,
-          zIndex: 100,
-        }}
-      >
-        <div className="sidebar-inner">
-          <Logo collapsed={collapsed} toggleCollapsed={() => setCollapsed(!collapsed)} />
-          <div className="scrollable-menu">
-            <MenuList />
-          </div>
-          <AdminFooter collapsed={collapsed} />
-        </div>
-      </Sider>
-
-      <Layout
-        style={{
-          marginLeft: collapsed ? 80 : sidebarWidth,
-          minHeight: '100vh',
-          transition: 'margin-left 0.2s',
-          background: '#F3F4F6' // Main content background
-        }}
-      >
-        {/* Minimal Header if needed, otherwise just content area spacing */}
-        <Content
+    <LanguageContext.Provider value={{ language, setLanguage }}>
+      <Layout style={{ minHeight: '100vh' }}>
+        <Sider
+          width={sidebarWidth}
+          collapsedWidth={80}
+          collapsible
+          trigger={null}
+          collapsed={collapsed}
+          className="modern-sidebar"
+          theme="light"
           style={{
-            margin: '24px',
-            padding: 24,
-            background: '#fff',
-            borderRadius: 12, // Modern rounded corners for content card
-            minHeight: 280,
-            overflow: 'initial',
-            boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            zIndex: 100,
           }}
         >
-          <Outlet />
-        </Content>
+          <div className="sidebar-inner">
+            <Logo collapsed={collapsed} toggleCollapsed={() => setCollapsed(!collapsed)} />
+            <div className="scrollable-menu">
+              <MenuList language={language} />
+            </div>
+            <AdminFooter collapsed={collapsed} language={language} setLanguage={setLanguage} />
+          </div>
+        </Sider>
+
+        <Layout
+          style={{
+            marginLeft: collapsed ? 80 : sidebarWidth,
+            minHeight: '100vh',
+            transition: 'margin-left 0.2s',
+            background: '#F3F4F6' // Main content background
+          }}
+        >
+          {/* Minimal Header if needed, otherwise just content area spacing */}
+          <Content
+            style={{
+              margin: '24px',
+              padding: 24,
+              background: '#fff',
+              borderRadius: 12, // Modern rounded corners for content card
+              minHeight: 280,
+              overflow: 'initial',
+              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+            }}
+          >
+            <Outlet />
+          </Content>
+        </Layout>
       </Layout>
-    </Layout>
+    </LanguageContext.Provider>
   );
 };
 
