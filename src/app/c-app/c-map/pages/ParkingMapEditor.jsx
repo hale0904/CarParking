@@ -9,6 +9,11 @@ import EditorToolsPanel from './editor/EditorToolsPanel';
 import EditorCanvas from './editor/EditorCanvas';
 import EditorPropertiesPanel from './editor/EditorPropertiesPanel';
 import { pointInPolygon } from '../utils/geometry';
+import {
+  buildZonePrefixMap,
+  getNextSlotIndexInZone,
+  generateSlotsWithZonePrefix,
+} from '../utils/slotNaming';
 import './parkingMapEditor.scss';
 import axiosClient from '../../../c-lib/axios/axiosClient.service';
 import { PARKING_API } from '../../../c-lib/constants/auth-api.constant';
@@ -157,14 +162,14 @@ const ParkingMapEditor = () => {
   React.useEffect(() => {
     const loadMapData = async () => {
       try {
-        let normalizedSensors = []; // sensorCode
+        let normalizedSensors = [];
 
         try {
           const sensorRes = await axiosClient.post(PARKING_API.GET_LIST_SENSOR, {});
           const sensorList = sensorRes?.data || sensorRes;
-          const normalizedSensorsData = (sensorList || []).map((s) => ({ ...s, id: s._id })); // sensorCode
-          normalizedSensors = normalizedSensorsData; // sensorCode
-          setSensors(normalizedSensorsData); // sensorCode
+          const normalizedSensorsData = (sensorList || []).map((s) => ({ ...s, id: s._id }));
+          normalizedSensors = normalizedSensorsData;
+          setSensors(normalizedSensorsData);
         } catch (e) {
           console.error('Failed to fetch sensors:', e);
         }
@@ -174,8 +179,6 @@ const ParkingMapEditor = () => {
 
         if (list && list.length > 0) {
           const item = list[0];
-          // Thêm tạm vào loadMapData sau dòng const item = list[0];
-          console.log('RAW zones:', JSON.stringify(item.floors?.[0]?.zones, null, 2));
           setParkingCode(item.code || 'PK001');
           setParkingName(item.name || 'New Parking Lot');
           setParkingLocation(item.location || '');
@@ -225,36 +228,37 @@ const ParkingMapEditor = () => {
                   slots:
                     group.slots && group.slots.length > 0
                       ? group.slots.map((slot) => ({
-                          id: slot.code,
-                          code: slot.code,
-                          mongoId: slot._id || null, // sensorCode
-                          status:
-                            slot.status === 0
-                              ? 'available' // xanh
-                              : slot.status === 1
-                                ? 'occupied' // đỏ
-                                : slot.status === 2
-                                  ? 'reserved' // vàng
-                                  : slot.status === 3
-                                    ? 'inactive' // xám
-                                    : 'available',
-                          sensorCode:
-                            normalizedSensors.find((s) => s._id === slot.sensorId)?.code || null, // sensorCode
-                          sensorId: slot.sensorId || null,
-                          sensorStatus:
-                            slot.sensorStatus !== undefined
-                              ? slot.sensorStatus
-                                ? 'online'
-                                : 'offline'
-                              : null,
-                        }))
+                        id: slot.code,
+                        code: slot.code,
+                        nameSlot: slot.nameSlot || slot.code || '',
+                        mongoId: slot._id || null,
+                        status:
+                          slot.status === 0
+                            ? 'available' // xanh
+                            : slot.status === 1
+                              ? 'occupied' // đỏ
+                              : slot.status === 2
+                                ? 'reserved' // vàng
+                                : slot.status === 3
+                                  ? 'inactive' // xám
+                                  : 'available',
+                        sensorCode:
+                          normalizedSensors.find((s) => s._id === slot.sensorId)?.code || null,
+                        sensorId: slot.sensorId || null,
+                        sensorStatus:
+                          slot.sensorStatus !== undefined
+                            ? slot.sensorStatus
+                              ? 'online'
+                              : 'offline'
+                            : null,
+                      }))
                       : Array.from({ length: group.availableSlots || 0 }).map((_, i) => ({
-                          id: `${zone.code}-${group.code}-S${i + 1}`,
-                          code: `S${i + 1}`,
-                          status: 'available',
-                          sensorId: null,
-                          sensorStatus: null,
-                        })),
+                        id: `${zone.code}-${group.code}-S${i + 1}`,
+                        code: `S${i + 1}`,
+                        status: 'available',
+                        sensorId: null,
+                        sensorStatus: null,
+                      })),
                 })),
               })),
             }));
@@ -281,10 +285,10 @@ const ParkingMapEditor = () => {
           standaloneSlots: floor.standaloneSlots.map((slot) =>
             slot.sensorId && slot.sensorId === sensorId
               ? {
-                  ...slot,
-                  status: sensorStatus ? 'occupied' : 'available',
-                  sensorStatus: sensorStatus ? 'online' : 'offline',
-                }
+                ...slot,
+                status: sensorStatus ? 'occupied' : 'available',
+                sensorStatus: sensorStatus ? 'online' : 'offline',
+              }
               : slot,
           ),
           zones: floor.zones.map((zone) => ({
@@ -294,10 +298,10 @@ const ParkingMapEditor = () => {
               slots: group.slots.map((slot) =>
                 slot.sensorId && slot.sensorId === sensorId
                   ? {
-                      ...slot,
-                      status: sensorStatus ? 'occupied' : 'available',
-                      sensorStatus: sensorStatus ? 'online' : 'offline',
-                    }
+                    ...slot,
+                    status: sensorStatus ? 'occupied' : 'available',
+                    sensorStatus: sensorStatus ? 'online' : 'offline',
+                  }
                   : slot,
               ),
             })),
@@ -382,26 +386,25 @@ const ParkingMapEditor = () => {
   const handleDeleteFloor = (e, floorId) => {
     e.stopPropagation();
     if (floors.length <= 1) {
-      alert('Cannot delete the last floor.');
+      message.warning('Cannot delete the last floor.');
       return;
     }
-    if (window.confirm('Are you sure you want to delete this floor? All data will be lost.')) {
-      const newFloors = floors.filter((f) => f.id !== floorId);
-      setFloors(newFloors);
-      if (activeFloorId === floorId) {
-        setActiveFloorId(newFloors[0].id);
+    Modal.confirm({
+      title: 'Confirm Deletion',
+      content: 'Are you sure you want to delete this floor? All data will be lost.',
+      onOk: () => {
+        const newFloors = floors.filter(f => f.id !== floorId);
+        setFloors(newFloors);
+        if (activeFloorId === floorId) {
+          setActiveFloorId(newFloors[0].id);
+        }
       }
-    }
+    });
   };
 
   // Helpers
-  const generateSlots = (count) => {
-    return Array.from({ length: count }).map((_, i) => ({
-      id: `slot-${Date.now()}-${i}`,
-      status: 'unassigned',
-      sensorId: null,
-      sensorStatus: null,
-    }));
+  const generateSlots = (count, zonePrefix = 'S', startIndex = 1) => {
+    return generateSlotsWithZonePrefix(count, zonePrefix, startIndex);
   };
 
   const handleUpdateBoundary = (newBoundary) => {
@@ -411,21 +414,23 @@ const ParkingMapEditor = () => {
   // Boundary Logic
   const handleStartDrawBoundary = () => {
     setEditorMode('DRAW_BOUNDARY');
-    // Optional: clear existing if starting fresh?
-    // For now, assume if we click draw, we might be continuing or starting over.
-    // If it's already closed, maybe we want to clear it and start over?
     if (boundary.closed) {
-      if (window.confirm('Start new boundary? This will clear the existing one.')) {
-        setBoundary({ ...boundary, points: [], closed: false });
-      } else {
-        setEditorMode(null); // Cancel action
-      }
+      Modal.confirm({
+        title: 'New Boundary',
+        content: 'Start new boundary? This will clear the existing one.',
+        onOk: () => {
+          setBoundary({ ...boundary, points: [], closed: false });
+        },
+        onCancel: () => {
+          setEditorMode(null);
+        }
+      });
     }
   };
 
   const handleFinishBoundary = () => {
     if (boundary.points.length < 6) {
-      alert('Boundary must have at least 3 points.');
+      message.warning('Boundary must have at least 3 points.');
       return;
     }
     setBoundary({ ...boundary, closed: true });
@@ -433,10 +438,14 @@ const ParkingMapEditor = () => {
   };
 
   const handleClearBoundary = () => {
-    if (window.confirm('Are you sure you want to clear the boundary?')) {
-      setBoundary({ ...boundary, points: [], closed: false });
-      setEditorMode(null);
-    }
+    Modal.confirm({
+      title: 'Clear Boundary',
+      content: 'Are you sure you want to clear the boundary?',
+      onOk: () => {
+        setBoundary({ ...boundary, points: [], closed: false });
+        setEditorMode(null);
+      }
+    });
   };
 
   const handleCancelDraw = () => {
@@ -456,7 +465,7 @@ const ParkingMapEditor = () => {
   // Zone Logic
   const handleStartDrawZone = () => {
     if (!boundary.closed) {
-      alert('Please draw and close a boundary before adding zones.');
+      message.warning('Please draw and close a boundary before adding zones.');
       return;
     }
     setEditorMode('DRAW_ZONE');
@@ -466,7 +475,7 @@ const ParkingMapEditor = () => {
 
   const handleFinishZone = () => {
     if (draftZone.points.length < 6) {
-      alert('Zone must have at least 3 points.');
+      message.warning('Zone must have at least 3 points.');
       return;
     }
     const newZone = {
@@ -495,7 +504,7 @@ const ParkingMapEditor = () => {
     }
   };
 
-  const updateSlotGroupDimensions = (group, newWidth, newHeight) => {
+  const updateSlotGroupDimensions = (group, newWidth, newHeight, zone = null) => {
     const isHorizontal = group.direction === 'horizontal';
     let count = 0;
     if (isHorizontal) {
@@ -506,7 +515,18 @@ const ParkingMapEditor = () => {
 
     let newSlots = [...group.slots];
     if (count > newSlots.length) {
-      const added = generateSlots(count - newSlots.length);
+      let added;
+      if (zone) {
+        const prefixMap = buildZonePrefixMap([zone]);
+        const zonePrefix = prefixMap[zone.id] || 'S';
+        const maxNum = newSlots.reduce((max, s) => {
+          const match = (s.code || '').replace(zonePrefix, '').match(/^(\d+)/);
+          return match ? Math.max(max, parseInt(match[1], 10)) : max;
+        }, 0);
+        added = generateSlots(count - newSlots.length, zonePrefix, maxNum + 1);
+      } else {
+        added = generateSlots(count - newSlots.length);
+      }
       newSlots = [...newSlots, ...added];
     } else if (count < newSlots.length) {
       newSlots = newSlots.slice(0, count);
@@ -543,6 +563,7 @@ const ParkingMapEditor = () => {
                 updatedGroup,
                 updatedGroup.width,
                 updatedGroup.height,
+                z,
               );
             }
 
@@ -658,6 +679,9 @@ const ParkingMapEditor = () => {
 
       if (targetZone) {
         const initialCount = 5;
+        const prefixMap = buildZonePrefixMap(zones);
+        const zonePrefix = prefixMap[targetZone.id] || 'S';
+        const startIndex = getNextSlotIndexInZone(targetZone, zonePrefix);
         const newGroup = {
           id: `sg-${Date.now()}`,
           name: 'New Group',
@@ -667,7 +691,7 @@ const ParkingMapEditor = () => {
           width: initialCount * SLOT_SIZE.width,
           height: SLOT_SIZE.height,
           direction: 'horizontal',
-          slots: generateSlots(initialCount),
+          slots: generateSlots(initialCount, zonePrefix, startIndex),
         };
         setZones((prev) =>
           prev.map((z) => {
@@ -677,7 +701,7 @@ const ParkingMapEditor = () => {
         );
         setSelectedEntity({ type: 'SLOT_GROUP', id: newGroup.id, parentId: targetZone.id });
       } else {
-        alert('Slot Groups must be placed inside a Zone.');
+        message.warning('Slot Groups must be placed inside a Zone.');
       }
     } else if (type === 'SLOT') {
       const newSlot = {
@@ -878,7 +902,7 @@ const ParkingMapEditor = () => {
               slots: group.slots.map((slot, si) => ({
                 code: slot.code || `${zone.id}-GS${gi + 1}-S${si + 1}`,
                 nameSlot: slot.code || `${zone.id}-GS${gi + 1}-S${si + 1}`,
-                sensorCode: slot.sensorCode || null, // sensorCode
+                sensorCode: slot.sensorCode || null,
                 status:
                   slot.status === 'available'
                     ? 0
@@ -924,20 +948,6 @@ const ParkingMapEditor = () => {
               const fromNode = floor.laneNodes.find((n) => n.id === edge.fromNodeId);
               const toNode = floor.laneNodes.find((n) => n.id === edge.toNodeId);
               if (!fromNode || !toNode) {
-                console.warn(
-                  '❌ Lane dropped at save:',
-                  edge.id,
-                  '| fromNode found:',
-                  !!fromNode,
-                  '| toNode found:',
-                  !!toNode,
-                  '| fromNodeId:',
-                  edge.fromNodeId,
-                  '| toNodeId:',
-                  edge.toNodeId,
-                  '| available node ids:',
-                  floor.laneNodes.map((n) => n.id),
-                );
                 return null;
               }
 
@@ -955,7 +965,6 @@ const ParkingMapEditor = () => {
         })),
       };
 
-      console.log('REQUEST BODY:', JSON.stringify(requestBody, null, 2));
       await axiosClient.post(PARKING_API.UPDATE_MAP, requestBody);
       message.success('Map saved successfully!');
 
@@ -989,12 +998,33 @@ const ParkingMapEditor = () => {
       console.error('Save error detail:', JSON.stringify(error.response?.data, null, 2));
       message.error(
         'Failed to save: ' +
-          (error.response?.data?.message || error.response?.data?.error || error.message),
+        (error.response?.data?.message || error.response?.data?.error || error.message),
       );
     } finally {
       hideLoading();
       setIsSaving(false);
     }
+  };
+
+  const handleClearAllSlots = () => {
+    Modal.confirm({
+      title: 'Clear All Slots & Groups',
+      content: 'This will delete ALL slot groups and standalone slots on this floor. This cannot be undone. Continue?',
+      okText: 'Yes, Clear All',
+      okType: 'danger',
+      cancelText: 'Cancel',
+      onOk: () => {
+        updateActiveFloor((f) => ({
+          standaloneSlots: [],
+          zones: f.zones.map((zone) => ({
+            ...zone,
+            slotGroups: [],
+          })),
+        }));
+        setSelectedEntity(null);
+        message.success('All slot groups and slots cleared.');
+      },
+    });
   };
 
   const handleDeleteEntity = () => {
@@ -1063,11 +1093,9 @@ const ParkingMapEditor = () => {
     new Set(
       floors
         .flatMap((f) => [
-          ...f.standaloneSlots.map((s) => s.sensorCode), // sensorCode
+          ...f.standaloneSlots.map((s) => s.sensorCode),
           ...f.zones.flatMap((z) =>
-            (z.slotGroups || []).flatMap(
-              (g) => (g.slots || []).map((s) => s.sensorCode), // sensorCode
-            ),
+            (z.slotGroups || []).flatMap((g) => (g.slots || []).map((s) => s.sensorCode)),
           ),
         ])
         .filter(Boolean),
@@ -1112,6 +1140,7 @@ const ParkingMapEditor = () => {
           <EditorToolsPanel
             editorMode={editorMode}
             setEditorMode={setEditorMode}
+            onClearAllSlots={handleClearAllSlots}
             onStartDraw={handleStartDrawBoundary}
             onFinishDraw={handleFinishBoundary}
             onClearBoundary={handleClearBoundary}
@@ -1198,15 +1227,15 @@ const ParkingMapEditor = () => {
               (selectedEntity
                 ? null
                 : {
-                    parkingName,
-                    parkingCode,
-                    parkingLocation,
-                    parkingUnit,
-                    activeFloorLevel: activeFloor.level,
-                    floorStatus: activeFloor.status ?? 1,
-                    gridRealSize,
-                    status: parkingStatus,
-                  })
+                  parkingName,
+                  parkingCode,
+                  parkingLocation,
+                  parkingUnit,
+                  activeFloorLevel: activeFloor.level,
+                  floorStatus: activeFloor.status ?? 1,
+                  gridRealSize,
+                  status: parkingStatus,
+                })
             }
             selectedType={selectedEntity ? selectedEntity.type : 'PARKING_GLOBAL'}
             selectedEntity={selectedEntity}

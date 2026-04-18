@@ -9,9 +9,10 @@ import {
     BorderOutlined,
     EditOutlined,
     DragOutlined,
-    UndoOutlined
+    UndoOutlined,
+    DeleteOutlined
 } from '@ant-design/icons';
-import { Switch, Divider, Button } from 'antd';
+import { Switch, Divider, Button, Tooltip } from 'antd';
 
 const EditorToolsPanel = ({
 
@@ -28,7 +29,8 @@ const EditorToolsPanel = ({
     onFinishDrawZone,
     onCancelDrawZone,
     onUndoDrawZone,
-    draftZone
+    draftZone,
+    onClearAllSlots
 }) => {
     const handleDragStart = (e, type) => {
         e.dataTransfer.setData('toolType', type);
@@ -105,6 +107,18 @@ const EditorToolsPanel = ({
                         label="Single Slot"
                         icon={<CarOutlined />}
                     />
+                </div>
+                <div style={{ padding: '0 8px' }}>
+                    <Tooltip title="Delete all slot groups & slots on this floor">
+                        <Button
+                            danger
+                            icon={<DeleteOutlined />}
+                            onClick={onClearAllSlots}
+                            style={{ width: '100%', marginTop: 8 }}
+                        >
+                            Clear All Slots
+                        </Button>
+                    </Tooltip>
                 </div>
             </div>
 

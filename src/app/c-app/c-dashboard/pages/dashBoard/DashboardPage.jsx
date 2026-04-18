@@ -26,7 +26,6 @@ const parseLegacyLanesToGraph = (lanesApiData, apiNodes = []) => {
         const w = l.laneWidth || l.height || 20;
         if (!pts || pts.length < 4) return;
 
-        // Resolve: if fromNodeId is a MongoDB _id, convert to code
         const fromNodeId = mongoIdToCode[l.fromNodeId] || l.fromNodeId;
         const toNodeId = mongoIdToCode[l.toNodeId] || l.toNodeId;
 
@@ -68,7 +67,7 @@ const parseLegacyLanesToGraph = (lanesApiData, apiNodes = []) => {
 
 const FloorMapView = ({ floor, metadata }) => {
     const [scale, setScale] = useState(0.5);
-    const [editorMode] = useState("PAN")
+    const [editorMode] = useState("PAN");
 
     return (
         <EditorCanvas
@@ -111,8 +110,10 @@ const DashboardPage = () => {
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                // Lấy real-time stats từ mapData thay vì API statistical
-                // API statistical dùng range time — không phù hợp cho real-time status
+                const now = new Date();
+                const startOfDay = new Date(now);
+                startOfDay.setHours(0, 0, 0, 0);
+
                 const res = await axiosClient.post(STATISTICAL_API.GET_STATISTICAL, {
                     expectedArrivalTime: startOfDay.toISOString(),
                     expectedLeaveTime: now.toISOString(),
@@ -137,7 +138,6 @@ const DashboardPage = () => {
             try {
                 const res = await axiosClient.post(PARKING_API.GET_LIST, {});
                 const list = res?.data || res;
-                console.log("RAW API DATA:", list);
 
                 if (!list || list.length === 0) return;
 
@@ -184,10 +184,10 @@ const DashboardPage = () => {
                                         id: slot._id,
                                         code: slot.code,
                                         status:
-                                            slot.status === 0 ? 'available' :   // xanh
-                                                slot.status === 1 ? 'occupied' :    // đỏ
-                                                    slot.status === 2 ? 'reserved' :    // vàng
-                                                        slot.status === 3 ? 'inactive' :    // xám
+                                            slot.status === 0 ? 'available' :
+                                                slot.status === 1 ? 'occupied' :
+                                                    slot.status === 2 ? 'reserved' :
+                                                        slot.status === 3 ? 'inactive' :
                                                             'available',
                                         sensorId: slot.sensorId,
                                         sensorStatus: slot.sensorStatus
@@ -205,22 +205,18 @@ const DashboardPage = () => {
             }
         };
 
-        // ✅ Gọi lần đầu ngay lập tức
         fetchMap();
         fetchStats();
 
-        // ✅ Sau đó polling mỗi 2 giây
         const interval = setInterval(() => {
             fetchMap();
             fetchStats();
-        }, 2000);
+        }, 1000);
 
-        // ✅ Cleanup khi unmount — đặt ở useEffect, không phải trong fetchMap
         return () => clearInterval(interval);
-
     }, []);
-    useEffect(() => {
 
+    useEffect(() => {
         const socket = io("https://be-smartparking.onrender.com", {
             transports: ["websocket"]
         });
@@ -229,10 +225,6 @@ const DashboardPage = () => {
 
         socket.on("slot:update", (data) => {
             const { slotId, sensorStatus } = data;
-            console.log("📡 Socket received:", data);
-            console.log("Looking for slotId:", data.slotId, typeof data.slotId);
-
-            // ✅ Xử lý rõ ràng hơn
             const isOccupied = sensorStatus === true || sensorStatus === 1;
 
             setMapData(prev => {
@@ -244,7 +236,7 @@ const DashboardPage = () => {
                         slotGroups: zone.slotGroups.map(group => ({
                             ...group,
                             slots: group.slots.map(slot =>
-                                slot.id === slotId  // ✅ giờ cả 2 đều là string
+                                slot.id === slotId
                                     ? {
                                         ...slot,
                                         sensorStatus: isOccupied,
@@ -262,7 +254,6 @@ const DashboardPage = () => {
         return () => {
             socket.disconnect();
         };
-
     }, []);
 
     const allSlotsGlobal = mapData
@@ -288,7 +279,6 @@ const DashboardPage = () => {
                 <Title level={4}>Dashboard</Title>
 
                 <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                    {/* Left Col - Status Overview */}
                     <Col span={12}>
                         <Card
                             title={<span style={{ color: 'white', fontSize: 14 }}>Status Overview</span>}
@@ -348,7 +338,6 @@ const DashboardPage = () => {
                         </Card>
                     </Col>
 
-                    {/* Right Col - Traffic Monitoring */}
                     <Col span={12}>
                         <Card
                             title="Traffic Monitoring"
@@ -373,7 +362,6 @@ const DashboardPage = () => {
                     </Col>
                 </Row>
 
-                {/* Section 2 - Parking Map */}
                 <Title level={4}>Parking Map</Title>
                 <Divider style={{ marginTop: 0, marginBottom: 16 }} />
 

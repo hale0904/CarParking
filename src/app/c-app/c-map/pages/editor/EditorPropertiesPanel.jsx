@@ -61,12 +61,24 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                     {selectedType === 'ENTRANCE' && 'Entrance Properties'}
                     {selectedType === 'EXIT' && 'Exit Properties'}
                 </Title>
-                {selectedData?.id && <Tag color="blue">{selectedData.id}</Tag>}
+                {selectedData?.id && (
+                    <Tag color="blue">
+                        {selectedType === 'SLOT' ? selectedData.code || selectedData.id : selectedData.id}
+                    </Tag>
+                )}
             </div>
 
             <Form layout="vertical" size="small">
                 {selectedType === 'SLOT' ? (
                     <>
+                        {/* Slot display name — read only */}
+                        <Form.Item label="Slot Name">
+                            <Input
+                                value={selectedData.nameSlot || selectedData.code || selectedData.id || '—'}
+                                disabled
+                                style={{ color: '#111827', fontWeight: 600, cursor: 'default' }}
+                            />
+                        </Form.Item>
                         <Form.Item label="Status">
                             <Select
                                 value={selectedData.status || 'unassigned'}
@@ -103,7 +115,7 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                                             console.log("Update response:", res);
                                         } catch (e) {
                                             console.error("Sensor update fail:", e);
-                                            message.error(`Lỗi cập nhật sensor vào slot`);
+                                            // message.error(`Lỗi cập nhật sensor vào slot`);
                                         }
                                     };
 
@@ -115,9 +127,9 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                                     // If assigning a new sensor
                                     if (newVal) {
                                         await updateSensorSlotId(newVal, selectedData.mongoId || selectedData.id); // sensorCode
-                                        message.success(`Đã gán sensor thành công vào slot`);
+                                        // message.success(`Đã gán sensor thành công vào slot`);
                                     } else if (!newVal && oldSensorCode) { // sensorCode
-                                        message.success(`Đã gỡ sensor khỏi slot`);
+                                        // message.success(`Đã gỡ sensor khỏi slot`);
                                     }
 
                                     if (onUpdateSlot) {

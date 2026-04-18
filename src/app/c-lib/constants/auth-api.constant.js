@@ -24,3 +24,7 @@ export const CATEGORY_IOT_API = {
   UPDATE: '/api/ad/updateCategoryIot',
   DELETE: '/api/ad/deleteCategoryIot',
 };
+
+export const USER_API = {
+  GET_LIST: 'api/ad/getListAccountUser'
+};

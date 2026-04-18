@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Typography, Row, Col, Tabs, Card, Space } from 'antd';
-import { barrierList, barrierLogs, lprLogs, hardwareAlerts } from '../../../mocks/barrierMocks';
+import { barrierList, barrierLogs, lprLogs, hardwareAlerts } from './barrierMocks';
 
 import BarrierStatusCard from './components/BarrierStatusCard';
 import ForceOpenButton from './components/ForceOpenButton';

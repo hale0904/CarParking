@@ -12,6 +12,7 @@ import {
   UpOutlined,
   AlertOutlined,
   GlobalOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
 import { Link, Outlet, useNavigate } from 'react-router-dom';
 
@@ -85,12 +86,14 @@ const MenuList = ({ language }) => {
       manageMap: 'Manage Map',
       iotDevices: 'IoT Devices',
       barrierControl: 'Barrier Control',
+      userManagement: 'User Management',
       dashboard: 'Dashboard & Reports',
     },
     vi: {
       manageMap: 'Quản lý bản đồ',
       iotDevices: 'Thiết bị IoT',
       barrierControl: 'Kiểm soát barrier',
+      userManagement: 'Quản lý người dùng',
       dashboard: 'Bảng điều khiển & Báo cáo',
     },
   };
@@ -102,6 +105,11 @@ const MenuList = ({ language }) => {
       key: 'map-manage',
       icon: <EnvironmentOutlined />,
       label: <Link to="/admin/parking-map">{labels.manageMap}</Link>,
+    },
+    {
+      key: 'users',
+      icon: <TeamOutlined />,
+      label: <Link to="/admin/users">{labels.userManagement}</Link>,
     },
     {
       key: 'devices',
