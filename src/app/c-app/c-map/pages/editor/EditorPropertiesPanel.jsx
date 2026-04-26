@@ -7,6 +7,12 @@ import { PARKING_API } from '../../../../c-lib/constants/auth-api.constant';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
+const SLOT_STATUS_OPTIONS = [
+    { value: 'available', label: 'Vị trí trống' },
+    { value: 'occupied', label: 'Vị trí có xe' },
+    { value: 'reserved', label: 'Vị trí đặt trước' },
+    { value: 'inactive', label: 'Vị trí lỗi/ Vị trí đang chỉnh sửa' },
+];
 
 const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onUpdate, onUpdateGroupedSlot, onUpdateSlot, onCycleStatus, onDelete, assignedSensorIds = [], sensors = [] }) => {
     if (!selectedData) {
@@ -38,14 +44,8 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
         }
     };
 
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'available': return 'green';
-            case 'occupied': return 'red';
-            case 'reserved': return 'gold';
-            default: return 'default';
-        }
-    };
+    const canDeleteSelectedSlot =
+        selectedType !== 'SLOT' || selectedData?.status === 'inactive' || selectedData?.status === 3;
 
     return (
         <div className="properties-content">
@@ -81,15 +81,15 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                         </Form.Item>
                         <Form.Item label="Status">
                             <Select
-                                value={selectedData.status || 'unassigned'}
+                                value={selectedData.status || 'available'}
                                 onChange={(val) => handleChange('status', val)}
                                 style={{ width: '100%' }}
-                                disabled={true}
                             >
-                                <Option value="unassigned"><span style={{ color: '#d1d5db', fontWeight: 'bold' }}>UNASSIGNED</span></Option>
-                                <Option value="available"><span style={{ color: '#86efac', fontWeight: 'bold' }}>AVAILABLE</span></Option>
-                                <Option value="occupied"><span style={{ color: '#f87171', fontWeight: 'bold' }}>OCCUPIED</span></Option>
-                                <Option value="reserved"><span style={{ color: '#fbbf24', fontWeight: 'bold' }}>RESERVED</span></Option>
+                                {SLOT_STATUS_OPTIONS.map((status) => (
+                                    <Option key={status.value} value={status.value}>
+                                        {status.label}
+                                    </Option>
+                                ))}
                             </Select>
                             <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>Trạng thái cập nhật tự động từ cảm biến IoT</div>
                         </Form.Item>
@@ -474,6 +474,7 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                         danger
                         block
                         onClick={onDelete}
+                        disabled={!canDeleteSelectedSlot}
                     >
                         {selectedType === 'SLOT_GROUP' ? 'Delete Group' :
                             selectedType === 'ZONE' ? 'Delete Zone' :

@@ -228,37 +228,37 @@ const ParkingMapEditor = () => {
                   slots:
                     group.slots && group.slots.length > 0
                       ? group.slots.map((slot) => ({
-                        id: slot.code,
-                        code: slot.code,
-                        nameSlot: slot.nameSlot || slot.code || '',
-                        mongoId: slot._id || null,
-                        status:
-                          slot.status === 0
-                            ? 'available' // xanh
-                            : slot.status === 1
-                              ? 'occupied' // đỏ
-                              : slot.status === 2
-                                ? 'reserved' // vàng
-                                : slot.status === 3
-                                  ? 'inactive' // xám
-                                  : 'available',
-                        sensorCode:
-                          normalizedSensors.find((s) => s._id === slot.sensorId)?.code || null,
-                        sensorId: slot.sensorId || null,
-                        sensorStatus:
-                          slot.sensorStatus !== undefined
-                            ? slot.sensorStatus
-                              ? 'online'
-                              : 'offline'
-                            : null,
-                      }))
+                          id: slot.code,
+                          code: slot.code,
+                          nameSlot: slot.nameSlot || slot.code || '',
+                          mongoId: slot._id || null,
+                          status:
+                            slot.status === 0
+                              ? 'available' // xanh
+                              : slot.status === 1
+                                ? 'occupied' // đỏ
+                                : slot.status === 2
+                                  ? 'reserved' // vàng
+                                  : slot.status === 3
+                                    ? 'inactive' // xám
+                                    : 'available',
+                          sensorCode:
+                            normalizedSensors.find((s) => s._id === slot.sensorId)?.code || null,
+                          sensorId: slot.sensorId || null,
+                          sensorStatus:
+                            slot.sensorStatus !== undefined
+                              ? slot.sensorStatus
+                                ? 'online'
+                                : 'offline'
+                              : null,
+                        }))
                       : Array.from({ length: group.availableSlots || 0 }).map((_, i) => ({
-                        id: `${zone.code}-${group.code}-S${i + 1}`,
-                        code: `S${i + 1}`,
-                        status: 'available',
-                        sensorId: null,
-                        sensorStatus: null,
-                      })),
+                          id: `${zone.code}-${group.code}-S${i + 1}`,
+                          code: `S${i + 1}`,
+                          status: 'available',
+                          sensorId: null,
+                          sensorStatus: null,
+                        })),
                 })),
               })),
             }));
@@ -285,10 +285,15 @@ const ParkingMapEditor = () => {
           standaloneSlots: floor.standaloneSlots.map((slot) =>
             slot.sensorId && slot.sensorId === sensorId
               ? {
-                ...slot,
-                status: sensorStatus ? 'occupied' : 'available',
-                sensorStatus: sensorStatus ? 'online' : 'offline',
-              }
+                  ...slot,
+                  status:
+                    slot.status === 'reserved' || slot.status === 'inactive'
+                      ? slot.status
+                      : sensorStatus
+                        ? 'occupied'
+                        : 'available',
+                  sensorStatus: sensorStatus ? 'online' : 'offline',
+                }
               : slot,
           ),
           zones: floor.zones.map((zone) => ({
@@ -298,10 +303,15 @@ const ParkingMapEditor = () => {
               slots: group.slots.map((slot) =>
                 slot.sensorId && slot.sensorId === sensorId
                   ? {
-                    ...slot,
-                    status: sensorStatus ? 'occupied' : 'available',
-                    sensorStatus: sensorStatus ? 'online' : 'offline',
-                  }
+                      ...slot,
+                      status:
+                        slot.status === 'reserved' || slot.status === 'inactive'
+                          ? slot.status
+                          : sensorStatus
+                            ? 'occupied'
+                            : 'available',
+                      sensorStatus: sensorStatus ? 'online' : 'offline',
+                    }
                   : slot,
               ),
             })),
@@ -393,12 +403,12 @@ const ParkingMapEditor = () => {
       title: 'Confirm Deletion',
       content: 'Are you sure you want to delete this floor? All data will be lost.',
       onOk: () => {
-        const newFloors = floors.filter(f => f.id !== floorId);
+        const newFloors = floors.filter((f) => f.id !== floorId);
         setFloors(newFloors);
         if (activeFloorId === floorId) {
           setActiveFloorId(newFloors[0].id);
         }
-      }
+      },
     });
   };
 
@@ -423,7 +433,7 @@ const ParkingMapEditor = () => {
         },
         onCancel: () => {
           setEditorMode(null);
-        }
+        },
       });
     }
   };
@@ -444,7 +454,7 @@ const ParkingMapEditor = () => {
       onOk: () => {
         setBoundary({ ...boundary, points: [], closed: false });
         setEditorMode(null);
-      }
+      },
     });
   };
 
@@ -998,7 +1008,7 @@ const ParkingMapEditor = () => {
       console.error('Save error detail:', JSON.stringify(error.response?.data, null, 2));
       message.error(
         'Failed to save: ' +
-        (error.response?.data?.message || error.response?.data?.error || error.message),
+          (error.response?.data?.message || error.response?.data?.error || error.message),
       );
     } finally {
       hideLoading();
@@ -1009,7 +1019,8 @@ const ParkingMapEditor = () => {
   const handleClearAllSlots = () => {
     Modal.confirm({
       title: 'Clear All Slots & Groups',
-      content: 'This will delete ALL slot groups and standalone slots on this floor. This cannot be undone. Continue?',
+      content:
+        'This will delete ALL slot groups and standalone slots on this floor. This cannot be undone. Continue?',
       okText: 'Yes, Clear All',
       okType: 'danger',
       cancelText: 'Cancel',
@@ -1030,6 +1041,11 @@ const ParkingMapEditor = () => {
   const handleDeleteEntity = () => {
     if (!selectedEntity) return;
     const { type, id, parentId } = selectedEntity;
+
+    if (type === 'SLOT' && selectedData?.status !== 'inactive' && selectedData?.status !== 3) {
+      message.warning('Chi co the xoa slot khi trang thai la loi hoac dang chinh sua.');
+      return;
+    }
 
     if (type === 'LANE_NODE') {
       handleDeleteNode(id);
@@ -1227,15 +1243,15 @@ const ParkingMapEditor = () => {
               (selectedEntity
                 ? null
                 : {
-                  parkingName,
-                  parkingCode,
-                  parkingLocation,
-                  parkingUnit,
-                  activeFloorLevel: activeFloor.level,
-                  floorStatus: activeFloor.status ?? 1,
-                  gridRealSize,
-                  status: parkingStatus,
-                })
+                    parkingName,
+                    parkingCode,
+                    parkingLocation,
+                    parkingUnit,
+                    activeFloorLevel: activeFloor.level,
+                    floorStatus: activeFloor.status ?? 1,
+                    gridRealSize,
+                    status: parkingStatus,
+                  })
             }
             selectedType={selectedEntity ? selectedEntity.type : 'PARKING_GLOBAL'}
             selectedEntity={selectedEntity}

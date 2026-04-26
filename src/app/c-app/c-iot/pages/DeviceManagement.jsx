@@ -1,64 +1,104 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Button, Input, Space, Card, Row, Col, Select,
-  Typography, Table, Tag, Tooltip, Modal, Form,
-  notification, Badge
+  Badge,
+  Button,
+  Card,
+  Col,
+  Form,
+  Input,
+  Modal,
+  Row,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+  notification,
 } from 'antd';
 import {
-  SearchOutlined, PlusOutlined, EditOutlined,
-  DeleteOutlined, ExclamationCircleOutlined, WifiOutlined,
-  DisconnectOutlined, ClockCircleOutlined, ApiOutlined,
+  ApiOutlined,
+  DeleteOutlined,
+  DisconnectOutlined,
+  EditOutlined,
+  ExclamationCircleOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+  WifiOutlined,
 } from '@ant-design/icons';
+import { Navigate, useParams } from 'react-router-dom';
 import axiosClient from '../../../c-lib/axios/axiosClient.service';
-import { SENSOR_API, CATEGORY_IOT_API } from '../../../c-lib/constants/auth-api.constant';
+import { CATEGORY_IOT_API, SENSOR_API } from '../../../c-lib/constants/auth-api.constant';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-// ─── Status helpers ───────────────────────────────────────────────────────────
-const getCategoryName = (category) => {
+const getCategoryDisplayName = (category) => {
   if (!category) return null;
-  if (category.code === 'CA001') return 'Sensor';
-  if (category.code === 'CA002') return 'Camera';
-  return category.name;
+  return category.name || category.code || 'IoT Device';
 };
 
-function getStatus(sensor) {
-  if (sensor.isOnline) return 'Online';
-  if (sensor.isActive === 1) return 'Offline';
-  return 'Inactive';
-}
+const getStatus = (device) => {
+  if (device.isOnline) return 'Online';
+  return 'Offline';
+};
 
 const statusConfig = {
   Online: { color: 'success', icon: <WifiOutlined />, label: 'Online' },
   Offline: { color: 'error', icon: <DisconnectOutlined />, label: 'Offline' },
-  Inactive: { color: 'default', icon: <ClockCircleOutlined />, label: 'Inactive' },
 };
-const DEVICE_STATUSES = ['Online', 'Offline', 'Inactive'];
 
-// ─── Device Form Modal (Add / Edit) ──────────────────────────────────────────
-const DeviceFormModal = ({ open, mode, initialData, onClose, onSubmit, confirmLoading, categories }) => {
+const DEVICE_STATUSES = ['Online', 'Offline'];
+const CATEGORY_PAGE_CONFIG = {
+  CA001: {
+    entityName: 'Sensor',
+    showLinkedSlot: true,
+    showUnlinkedStat: true,
+  },
+  CA002: {
+    entityName: 'Camera',
+    showLinkedSlot: false,
+    showUnlinkedStat: false,
+  },
+};
+
+const DeviceFormModal = ({
+  open,
+  mode,
+  initialData,
+  onClose,
+  onSubmit,
+  confirmLoading,
+  selectedCategory,
+  pageConfig,
+}) => {
   const [form] = Form.useForm();
 
   useEffect(() => {
-    if (open) {
-      if (mode === 'edit' && initialData) {
-        form.setFieldsValue({
-          _id: initialData._id,
-          code: initialData.code,
-          slotId: initialData.slotId,
-          categoryCode: initialData.categoryId?.code,
-        });
-      } else {
-        form.resetFields();
-      }
+    if (!open) return;
+    if (mode === 'edit' && initialData) {
+      form.setFieldsValue({
+        _id: initialData._id,
+        code: initialData.code,
+        status: getStatus(initialData),
+        slotId:
+          typeof initialData.slotId === 'object'
+            ? initialData.slotId?.code || initialData.slotId?.nameSlot || ''
+            : initialData.slotId || '',
+      });
+      return;
     }
+    form.resetFields();
   }, [open, mode, initialData, form]);
 
-  const handleOk = () => {
-    form.validateFields().then(values => {
+  const handleOk = async () => {
+    try {
+      const values = await form.validateFields();
       onSubmit(values);
-    });
+    } catch (_) {
+      // form validation is shown by antd
+    }
   };
 
   return (
@@ -66,11 +106,18 @@ const DeviceFormModal = ({ open, mode, initialData, onClose, onSubmit, confirmLo
       title={
         <Space>
           <ApiOutlined style={{ color: '#1677ff' }} />
-          <span>{mode === 'add' ? 'Add New Sensor' : 'Edit Sensor'}</span>
+          <span>
+            {mode === 'add'
+              ? `Add ${selectedCategory?.name || pageConfig.entityName}`
+              : `Edit ${pageConfig.entityName}`}
+          </span>
         </Space>
       }
       open={open}
-      onCancel={() => { form.resetFields(); onClose(); }}
+      onCancel={() => {
+        form.resetFields();
+        onClose();
+      }}
       onOk={handleOk}
       confirmLoading={confirmLoading}
       okText={mode === 'add' ? 'Add' : 'Save Changes'}
@@ -78,141 +125,192 @@ const DeviceFormModal = ({ open, mode, initialData, onClose, onSubmit, confirmLo
       width={480}
     >
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form.Item label="Category">
+          <Input value={selectedCategory?.name || 'N/A'} disabled />
+        </Form.Item>
+
         {mode === 'edit' && (
           <>
             <Form.Item name="_id" label="Device ID">
               <Input disabled />
             </Form.Item>
-            <Form.Item name="code" label="Sensor Code">
+            <Form.Item name="code" label="Device Code">
               <Input disabled />
             </Form.Item>
-            <Form.Item name="slotId" label="Slot ID (Optional)">
-              <Input placeholder="Linked Slot ID" allowClear />
+            <Form.Item
+              name="status"
+              label="Status"
+              rules={[{ required: true, message: 'Please select status' }]}
+            >
+              <Select placeholder="Select status">
+                {DEVICE_STATUSES.map((status) => (
+                  <Option key={status} value={status}>
+                    {status}
+                  </Option>
+                ))}
+              </Select>
             </Form.Item>
+            {pageConfig.showLinkedSlot && (
+              <Form.Item name="slotId" label="Slot Code (Optional)">
+                <Input placeholder="Enter slot code" allowClear />
+              </Form.Item>
+            )}
           </>
         )}
-
-        <Form.Item
-          name="categoryCode"
-          label="Category"
-          rules={[{ required: true, message: 'Please select a category.' }]}
-        >
-          <Select placeholder="Select category" allowClear>
-            {categories?.map(c => (
-              <Option key={c._id} value={c.code}>{getCategoryName(c)}</Option>
-            ))}
-          </Select>
-        </Form.Item>
       </Form>
     </Modal>
   );
 };
 
-// ─── Delete Confirm Modal ─────────────────────────────────────────────
-const DeleteConfirmModal = ({ open, device, onClose, onDelete, confirmLoading }) => {
+const DeleteConfirmModal = ({ open, device, onClose, onDelete, confirmLoading, categoryName }) => {
   if (!device) return null;
+
   return (
     <Modal
       title={
         <Space style={{ color: '#cf1322' }}>
           <ExclamationCircleOutlined />
-          <span>Delete Sensor</span>
+          <span>Delete Device</span>
         </Space>
       }
       open={open}
       onCancel={onClose}
       onOk={() => onDelete(device.code)}
       confirmLoading={confirmLoading}
-      okText="Yes, Delete Sensor"
+      okText="Yes, Delete"
       okButtonProps={{ danger: true }}
       cancelText="Cancel"
       width={440}
     >
       <p>
-        Are you sure you want to delete Sensor{' '}
-        <strong>{device.code}</strong>?
+        Are you sure you want to delete <strong>{device.code}</strong> from{' '}
+        <strong>{categoryName || 'this category'}</strong>?
       </p>
     </Modal>
   );
 };
 
-// ─── Main Component ───────────────────────────────────────────────────────────
 const DeviceManagement = () => {
+  const { categoryCode } = useParams();
   const [devices, setDevices] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
 
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
-
   const [formModalOpen, setFormModalOpen] = useState(false);
   const [formMode, setFormMode] = useState('add');
   const [editingDevice, setEditingDevice] = useState(null);
-
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deletingDevice, setDeletingDevice] = useState(null);
-
-  // ── Fetch Data ──
-  const fetchDevices = async () => {
-    setLoading(true);
-    try {
-      const response = await axiosClient.post(SENSOR_API.GET_LIST, {});
-      console.log('RESPONSE:', response);
-      if (response.success) {
-        setDevices(response.data || []);
-      } else {
-        notification.error({ message: 'Error fetching sensors', description: response?.message || 'Unknown error' });
-      }
-    } catch (error) {
-      notification.error({ message: 'Error fetching sensors', description: error.message });
-    }
-    setLoading(false);
-  };
 
   const fetchCategories = async () => {
     try {
       const response = await axiosClient.post(CATEGORY_IOT_API.GET_LIST, {});
-      if (response.success) {
+      if (response?.success) {
         setCategories(response.data || []);
+      } else {
+        notification.error({
+          message: 'Error fetching categories',
+          description: response?.message || 'Unknown error',
+        });
       }
     } catch (error) {
-      notification.error({ message: 'Error fetching categories', description: error.message });
+      notification.error({
+        message: 'Error fetching categories',
+        description: error.message,
+      });
+    } finally {
+      setCategoriesLoaded(true);
+    }
+  };
+
+  const fetchDevices = async () => {
+    setLoading(true);
+    try {
+      const response = await axiosClient.post(SENSOR_API.GET_LIST, {});
+      if (response?.success) {
+        setDevices(response.data || []);
+      } else {
+        notification.error({
+          message: 'Error fetching IoT devices',
+          description: response?.message || 'Unknown error',
+        });
+      }
+    } catch (error) {
+      notification.error({
+        message: 'Error fetching IoT devices',
+        description: error.message,
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchDevices();
     fetchCategories();
+    fetchDevices();
   }, []);
 
-  // ── Derived state ──
-  const filteredDevices = useMemo(() => devices.filter(d => {
-    const matchSearch = String(d.code || '').toLowerCase().includes(searchText.toLowerCase()) ||
-      String(d.slotId || '').toLowerCase().includes(searchText.toLowerCase());
-    const dStatus = getStatus(d);
-    const matchStatus = statusFilter === 'All' || dStatus === statusFilter;
-    return matchSearch && matchStatus;
-  }), [devices, searchText, statusFilter]);
+  const selectedCategory = useMemo(
+    () => categories.find((category) => category.code === categoryCode) || null,
+    [categories, categoryCode],
+  );
+
+  const pageConfig = useMemo(
+    () => ({
+      entityName: 'Device',
+      showLinkedSlot: true,
+      showUnlinkedStat: true,
+      ...(CATEGORY_PAGE_CONFIG[categoryCode] || {}),
+    }),
+    [categoryCode],
+  );
+
+  const categoryDevices = useMemo(
+    () => devices.filter((device) => device.categoryId?.code === categoryCode),
+    [devices, categoryCode],
+  );
+
+  const filteredDevices = useMemo(
+    () =>
+      categoryDevices.filter((device) => {
+        const slotLabel = device.slotId
+          ? typeof device.slotId === 'object'
+            ? device.slotId?.nameSlot || device.slotId?.code || ''
+            : String(device.slotId)
+          : '';
+        const matchSearch =
+          String(device.code || '')
+            .toLowerCase()
+            .includes(searchText.toLowerCase()) || slotLabel.toLowerCase().includes(searchText.toLowerCase());
+        const deviceStatus = getStatus(device);
+        const matchStatus = statusFilter === 'All' || deviceStatus === statusFilter;
+        return matchSearch && matchStatus;
+      }),
+    [categoryDevices, searchText, statusFilter],
+  );
 
   const stats = useMemo(() => {
-    let online = 0, offline = 0, inactive = 0;
-    devices.forEach(d => {
-      const st = getStatus(d);
-      if (st === 'Online') online++;
-      else if (st === 'Offline') offline++;
-      else if (st === 'Inactive') inactive++;
+    let online = 0;
+    let offline = 0;
+
+    categoryDevices.forEach((device) => {
+      const status = getStatus(device);
+      if (status === 'Online') online += 1;
+      else offline += 1;
     });
+
     return {
-      total: devices.length,
+      total: categoryDevices.length,
       online,
       offline,
-      inactive,
-      unlinked: devices.filter(d => !d.slotId).length,
+      unlinked: categoryDevices.filter((device) => !device.slotId).length,
     };
-  }, [devices]);
+  }, [categoryDevices]);
 
-  // ── Handlers ──
   const openAddModal = () => {
     setFormMode('add');
     setEditingDevice(null);
@@ -228,111 +326,121 @@ const DeviceManagement = () => {
   const handleFormSubmit = async (values) => {
     setFormLoading(true);
     try {
-      let payload;
-      if (formMode === 'add') {
-        payload = {
-          code: '0',
-          categoryCode: values.categoryCode,
-        };
-      } else {
-        payload = {
-          _id: editingDevice._id,
-          code: editingDevice.code,
-          slotId: values.slotId,
-          categoryCode: values.categoryCode,
-        };
-      }
-      const res = await axiosClient.post(SENSOR_API.UPDATE, payload);
-      if (res.success) {
+      const statusPayload =
+        formMode === 'edit'
+          ? values.status === 'Online'
+            ? { isOnline: true, isActive: 1 }
+            : { isOnline: false, isActive: 1 }
+          : {};
+
+      const payload =
+        formMode === 'add'
+          ? {
+              code: '0',
+              categoryCode,
+            }
+          : {
+              _id: editingDevice._id,
+              code: editingDevice.code,
+              categoryCode,
+              ...statusPayload,
+              ...(pageConfig.showLinkedSlot ? { slotId: values.slotId } : {}),
+            };
+
+      const response = await axiosClient.post(SENSOR_API.UPDATE, payload);
+      if (response?.success) {
         notification.success({
-          message: `Sensor ${formMode === 'add' ? 'Added' : 'Updated'}`,
-          description: 'Changes saved successfully.'
+          message: formMode === 'add' ? 'Device added' : 'Device updated',
+          description: 'Changes saved successfully.',
         });
         setFormModalOpen(false);
         fetchDevices();
       } else {
         notification.error({
-          message: `Failed to ${formMode} sensor`,
-          description: res?.message
+          message: 'Failed to save device',
+          description: response?.message || 'Unknown error',
         });
       }
     } catch (error) {
-      notification.error({ message: 'Action Failed', description: error.message });
+      notification.error({
+        message: 'Action failed',
+        description: error.message,
+      });
+    } finally {
+      setFormLoading(false);
     }
-    setFormLoading(false);
   };
 
   const handleDeleteDevice = async (code) => {
     setFormLoading(true);
     try {
-      const res = await axiosClient.post(SENSOR_API.DELETE, { items: [code] });
-      if (res.success) {
-        notification.success({ message: 'Sensor Deleted', description: 'Sensor removed successfully.' });
+      const response = await axiosClient.post(SENSOR_API.DELETE, { items: [code] });
+      if (response?.success) {
+        notification.success({
+          message: 'Device deleted',
+          description: 'The device was removed successfully.',
+        });
         setDeleteModalOpen(false);
         fetchDevices();
       } else {
-        notification.error({ message: 'Failed to delete sensor', description: res?.message });
+        notification.error({
+          message: 'Failed to delete device',
+          description: response?.message || 'Unknown error',
+        });
       }
     } catch (error) {
-      notification.error({ message: 'Delete Failed', description: error.message });
+      notification.error({
+        message: 'Delete failed',
+        description: error.message,
+      });
+    } finally {
+      setFormLoading(false);
     }
-    setFormLoading(false);
   };
 
-  // ── Table columns ──
   const columns = [
     {
-      title: 'Sensor Code',
+      title: 'Device Code',
       dataIndex: 'code',
       key: 'code',
       sorter: (a, b) => String(a.code || '').localeCompare(String(b.code || '')),
-      render: (code, record) => (
-        <Space direction="vertical" size={0}>
-          <Text strong>{code}</Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>{record._id}</Text>
-        </Space>
-      ),
+      render: (code) => <Text strong>{code}</Text>,
     },
-    {
-      title: 'Linked Slot ID',
-      dataIndex: 'slotId',
-      key: 'slotId',
-      render: slotId => slotId
-        ? <Tag color="green">{slotId}</Tag>
-        : <Text type="secondary">—</Text>,
-    },
+    pageConfig.showLinkedSlot
+      ? {
+          title: 'Linked Slot',
+          dataIndex: 'slotId',
+          key: 'slotId',
+          render: (slotId) => {
+            if (!slotId) return <Text type="secondary">-</Text>;
+            const label =
+              typeof slotId === 'object'
+                ? slotId?.nameSlot || slotId?.code || String(slotId._id)
+                : slotId;
+            return <Tag color="green">{label}</Tag>;
+          },
+        }
+      : null,
     {
       title: 'Status',
       key: 'status',
-      filters: DEVICE_STATUSES.map(s => ({ text: s, value: s })),
+      filters: DEVICE_STATUSES.map((status) => ({ text: status, value: status })),
       onFilter: (value, record) => getStatus(record) === value,
       render: (_, record) => {
         const status = getStatus(record);
-        const cfg = statusConfig[status] || { color: 'default', label: status, icon: null };
+        const config = statusConfig[status] || { color: 'default', label: status, icon: null };
         return (
           <Badge
-            status={cfg.color}
+            status={config.color}
             text={
               <Space size={4}>
-                {cfg.icon}
-                <span>{cfg.label}</span>
+                {config.icon}
+                <span>{config.label}</span>
               </Space>
             }
           />
         );
       },
-    },
-    {
-      title: 'Type',
-      dataIndex: 'categoryId',
-      key: 'category',
-      render: category => {
-        const text = getCategoryName(category);
-        const color = text === 'Camera' ? 'red' : 'blue';
-        return text
-          ? <Tag color={color}>{text}</Tag>
-          : <Text type="secondary">—</Text>;
-      }
     },
     {
       title: 'Actions',
@@ -341,46 +449,50 @@ const DeviceManagement = () => {
       width: 100,
       render: (_, record) => (
         <Space>
-          <Tooltip title="Edit Sensor">
-            <Button
-              type="text"
-              icon={<EditOutlined />}
-              onClick={() => openEditModal(record)}
-            />
+          <Tooltip title="Edit device">
+            <Button type="text" icon={<EditOutlined />} onClick={() => openEditModal(record)} />
           </Tooltip>
-          <Tooltip title="Delete Sensor">
+          <Tooltip title="Delete device">
             <Button
               type="text"
               danger
               icon={<DeleteOutlined />}
-              onClick={() => { setDeletingDevice(record); setDeleteModalOpen(true); }}
+              onClick={() => {
+                setDeletingDevice(record);
+                setDeleteModalOpen(true);
+              }}
             />
           </Tooltip>
         </Space>
       ),
     },
-  ];
+  ].filter(Boolean);
 
-  // ── Render ──
+  if (categoriesLoaded && !selectedCategory) {
+    return <Navigate to="/admin/iot-categories" replace />;
+  }
+
   return (
     <div style={{ padding: 24, background: '#fff', minHeight: '100%' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <Title level={2} style={{ margin: 0 }}>IoT Sensor Management</Title>
+          <Title level={2} style={{ margin: 0 }}>
+            {selectedCategory?.name || 'IoT Device Management'}
+          </Title>
           <Text type="secondary">
-            Manage sensors and sync dynamically with backend endpoints
+            Manage {pageConfig.entityName.toLowerCase()} records filtered by category using the shared IoT API.
           </Text>
         </div>
         <Space>
-          <Button onClick={fetchDevices} loading={loading}>Refresh</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>
-            Add Sensor
+          <Button onClick={fetchDevices} loading={loading} icon={<ReloadOutlined />}>
+            Refresh
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal} disabled={!selectedCategory}>
+            Add {pageConfig.entityName}
           </Button>
         </Space>
       </div>
 
-      {/* Stats cards */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={12} sm={6} md={4}>
           <Card size="small" style={{ textAlign: 'center' }}>
@@ -400,68 +512,66 @@ const DeviceManagement = () => {
             <div style={{ fontSize: 22, fontWeight: 'bold', color: '#f5222d' }}>{stats.offline}</div>
           </Card>
         </Col>
-        <Col xs={12} sm={6} md={4}>
-          <Card size="small" style={{ textAlign: 'center', borderColor: '#d9d9d9', background: '#fafafa' }}>
-            <div style={{ fontSize: 12, color: '#595959' }}>Inactive</div>
-            <div style={{ fontSize: 22, fontWeight: 'bold', color: '#8c8c8c' }}>{stats.inactive}</div>
-          </Card>
-        </Col>
-        <Col xs={12} sm={6} md={4}>
-          <Card size="small" style={{ textAlign: 'center', borderColor: '#91caff', background: '#e6f4ff' }}>
-            <div style={{ fontSize: 12, color: '#0958d9' }}>Unlinked</div>
-            <div style={{ fontSize: 22, fontWeight: 'bold', color: '#1677ff' }}>{stats.unlinked}</div>
-          </Card>
-        </Col>
+        {pageConfig.showUnlinkedStat && (
+          <Col xs={12} sm={6} md={4}>
+            <Card size="small" style={{ textAlign: 'center', borderColor: '#91caff', background: '#e6f4ff' }}>
+              <div style={{ fontSize: 12, color: '#0958d9' }}>Unlinked</div>
+              <div style={{ fontSize: 22, fontWeight: 'bold', color: '#1677ff' }}>{stats.unlinked}</div>
+            </Card>
+          </Col>
+        )}
       </Row>
 
-      {/* Filters */}
       <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
         <Input
-          placeholder="Search by code or slot id..."
+          placeholder={pageConfig.showLinkedSlot ? 'Search by device code or slot code...' : 'Search by device code...'}
           prefix={<SearchOutlined />}
           value={searchText}
-          onChange={e => setSearchText(e.target.value)}
-          style={{ width: 260 }}
+          onChange={(e) => setSearchText(e.target.value)}
+          style={{ width: 280 }}
           allowClear
         />
         <Select value={statusFilter} onChange={setStatusFilter} style={{ width: 140 }}>
           <Option value="All">All Status</Option>
-          {DEVICE_STATUSES.map(s => <Option key={s} value={s}>{s}</Option>)}
+          {DEVICE_STATUSES.map((status) => (
+            <Option key={status} value={status}>
+              {status}
+            </Option>
+          ))}
         </Select>
         <Text type="secondary" style={{ lineHeight: '32px' }}>
-          Showing {filteredDevices.length} of {devices.length} sensors
+          Showing {filteredDevices.length} of {categoryDevices.length} {pageConfig.entityName.toLowerCase()}s
         </Text>
       </Space>
 
-      {/* Device Table */}
       <Table
         columns={columns}
         dataSource={filteredDevices}
         rowKey="_id"
         scroll={{ x: 900 }}
-        pagination={{ pageSize: 5, showSizeChanger: true, showTotal: total => `${total} sensors` }}
+        pagination={{ pageSize: 5, showSizeChanger: true, showTotal: (total) => `${total} devices` }}
         loading={loading}
-        locale={{ emptyText: 'No sensors found.' }}
+        locale={{ emptyText: 'No devices found.' }}
       />
 
-      {/* Add / Edit modal */}
       <DeviceFormModal
         open={formModalOpen}
         mode={formMode}
         initialData={editingDevice}
-        categories={categories}
+        selectedCategory={selectedCategory}
+        pageConfig={pageConfig}
         onClose={() => setFormModalOpen(false)}
         onSubmit={handleFormSubmit}
         confirmLoading={formLoading}
       />
 
-      {/* Delete confirmation */}
       <DeleteConfirmModal
         open={deleteModalOpen}
         device={deletingDevice}
         onClose={() => setDeleteModalOpen(false)}
         onDelete={handleDeleteDevice}
         confirmLoading={formLoading}
+        categoryName={getCategoryDisplayName(selectedCategory)}
       />
     </div>
   );

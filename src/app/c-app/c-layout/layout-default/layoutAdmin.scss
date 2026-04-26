@@ -110,6 +110,22 @@ a {
     border-inline-end: none !important;
   }
 
+  .ant-menu-submenu-title {
+    margin-bottom: 4px !important;
+    border-radius: $border-radius;
+    height: 44px;
+    line-height: 44px;
+    color: $text-secondary;
+    font-weight: 500;
+    font-size: 14px;
+    transition: all $transition-fast;
+
+    &:hover {
+      color: $primary-blue;
+      background-color: $primary-blue-light !important;
+    }
+  }
+
   .ant-menu-item {
     margin-bottom: 4px !important;
     border-radius: $border-radius;
@@ -173,6 +189,33 @@ a {
         display: none;
       }
     }
+  }
+
+  .iot-category-menu-item {
+    overflow: hidden;
+  }
+
+  .iot-category-menu-item--new {
+    animation: iotCategorySlideIn 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+    background: linear-gradient(90deg, rgba(34, 197, 94, 0.18), rgba(34, 197, 94, 0.05)) !important;
+    border: 1px solid rgba(34, 197, 94, 0.18);
+
+    a {
+      color: #15803d !important;
+      font-weight: 600;
+    }
+  }
+}
+
+@keyframes iotCategorySlideIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0);
   }
 }
 

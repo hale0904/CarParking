@@ -12,6 +12,13 @@ export const STATISTICAL_API = {
   GET_STATISTICAL: '/api/ad/getStatistical',
 };
 
+export const TURNOVER_API = {
+  GET_TURNOVER: '/api/ad/turnover',
+};
+
+export const REVENUE_API = {
+  GET_REVENUE: '/api/ad/revenue',
+};
 
 export const SENSOR_API = {
   GET_LIST: '/api/ad/getListSensor',
@@ -26,5 +33,11 @@ export const CATEGORY_IOT_API = {
 };
 
 export const USER_API = {
-  GET_LIST: 'api/ad/getListAccountUser'
+  GET_LIST: 'api/ad/getListAccountUser',
+};
+
+export const CAMERA_API = {
+  GET_LIST: '/api/ad/getListCamera',
+  DELETE: '/api/ad/deleteCamera',
+  UPDATE: '/api/ad/updateCamera',
 };
