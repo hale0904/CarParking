@@ -17,10 +17,26 @@ import {
   Select,
   Button,
 } from 'antd';
-import { ExpandOutlined } from '@ant-design/icons';
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { ExpandOutlined, FilePdfOutlined, FileExcelOutlined } from '@ant-design/icons';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  BarChart,
+  Bar,
+} from 'recharts';
 import axiosClient from '../../../../c-lib/axios/axiosClient.service';
 import dayjs from 'dayjs';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
   PARKING_API,
   STATISTICAL_API,
@@ -36,6 +52,28 @@ const { RangePicker } = DatePicker;
 const DEFAULT_STATISTICAL_RANGE = [dayjs(), dayjs().add(2, 'hour')];
 const DEFAULT_TURNOVER_RANGE = [dayjs().startOf('month'), dayjs()];
 const DEFAULT_REVENUE_CUSTOM_RANGE = [dayjs().startOf('month'), dayjs()];
+const CURRENCY_FORMATTER = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
+
+const safeNumber = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
+const formatCurrency = (value) => CURRENCY_FORMATTER.format(safeNumber(value));
+
+const getFirstAvailableArray = (source, keys) => {
+  if (!source || typeof source !== 'object') return [];
+  for (const key of keys) {
+    if (Array.isArray(source[key])) return source[key];
+  }
+  return [];
+};
+
+const getLabelFromItem = (item, fallbackIndex) =>
+  item?.label ||
+  item?.period ||
+  item?.date ||
+  item?.month ||
+  item?.day ||
+  item?.time ||
+  item?.name ||
+  `Point ${fallbackIndex + 1}`;
 
 const parseLegacyLanesToGraph = (lanesApiData, apiNodes = []) => {
   const laneNodes = [];
@@ -399,6 +437,164 @@ const DashboardPage = () => {
   const turnoverPercent =
     typeof turnoverData?.turnover === 'number' ? turnoverData.turnover * 100 : 0;
   const zoneStatsPreview = useMemo(() => (statsData?.zones || []).slice(0, 4), [statsData]);
+  const occupancyChartData = useMemo(
+    () =>
+      (statsData?.zones || []).map((zone, index) => ({
+        name:
+          zoneOptions.find((item) => item.value === zone.zoneId)?.label ||
+          zone.zoneName ||
+          `Zone ${index + 1}`,
+        available: safeNumber(zone.empty),
+        occupied: safeNumber(zone.used),
+      })),
+    [statsData, zoneOptions],
+  );
+  const revenueSeriesData = useMemo(() => {
+    const root = revenueData?.data || revenueData || {};
+    const points = Array.isArray(root)
+      ? root
+      : getFirstAvailableArray(root, ['breakdown', 'series', 'details', 'items', 'list', 'rows']);
+    if (points.length > 0) {
+      return points.map((item, index) => ({
+        name: getLabelFromItem(item, index),
+        revenue: safeNumber(item.revenue ?? item.totalRevenue ?? item.amount ?? item.value),
+        sessions: safeNumber(item.totalSessions ?? item.sessions ?? item.count),
+      }));
+    }
+    return [
+      {
+        name: revenueType === 'day' ? 'Today' : revenueType === 'month' ? 'This Month' : 'Custom',
+        revenue: safeNumber(revenueData?.totalRevenue),
+        sessions: safeNumber(revenueData?.totalSessions),
+      },
+    ];
+  }, [revenueData, revenueType]);
+  const turnoverSeriesData = useMemo(() => {
+    const root = turnoverData?.data || turnoverData || {};
+    const points = Array.isArray(root)
+      ? root
+      : getFirstAvailableArray(root, ['breakdown', 'series', 'details', 'items', 'list', 'rows']);
+    if (points.length > 0) {
+      return points.map((item, index) => ({
+        name: getLabelFromItem(item, index),
+        sessions: safeNumber(item.totalSessions ?? item.sessions ?? item.count),
+        turnoverRate: safeNumber(item.turnover ?? item.rate ?? item.turnoverRate) * 100,
+      }));
+    }
+    return [
+      {
+        name: 'Summary',
+        sessions: safeNumber(turnoverData?.totalSessions),
+        turnoverRate: safeNumber(turnoverData?.turnover) * 100,
+      },
+    ];
+  }, [turnoverData]);
+
+  const handleExportCsv = () => {
+    const summaryRows = [
+      ['Section', 'Metric', 'Value'],
+      ['General', 'Selected Zones', selectedZoneLabel],
+      ['General', 'Total Slots', safeNumber(totalDisplay)],
+      ['General', 'Available Slots', safeNumber(pieData[0]?.value)],
+      ['General', 'Occupied Slots', safeNumber(pieData[1]?.value)],
+      ['Turnover', 'Total Sessions', safeNumber(turnoverData?.totalSessions)],
+      ['Turnover', 'Total Slots', safeNumber(turnoverData?.totalSlots)],
+      ['Turnover', 'Turnover Rate (%)', Number.isFinite(turnoverPercent) ? turnoverPercent : 0],
+      ['Revenue', 'Total Revenue', safeNumber(revenueData?.totalRevenue)],
+      ['Revenue', 'Total Sessions', safeNumber(revenueData?.totalSessions)],
+    ];
+
+    const occupancyRows = [
+      [],
+      ['Occupancy by Zone'],
+      ['Zone', 'Available', 'Occupied'],
+      ...occupancyChartData.map((row) => [row.name, row.available, row.occupied]),
+    ];
+
+    const revenueRows = [
+      [],
+      ['Revenue Trend'],
+      ['Period', 'Revenue', 'Sessions'],
+      ...revenueSeriesData.map((row) => [row.name, row.revenue, row.sessions]),
+    ];
+
+    const turnoverRows = [
+      [],
+      ['Turnover Trend'],
+      ['Period', 'Sessions', 'Turnover Rate (%)'],
+      ...turnoverSeriesData.map((row) => [row.name, row.sessions, row.turnoverRate]),
+    ];
+
+    const csvContent = [...summaryRows, ...occupancyRows, ...revenueRows, ...turnoverRows]
+      .map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"', '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([`\ufeff${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `dashboard-report-${dayjs().format('YYYYMMDD-HHmmss')}.csv`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+    message.success('Exported dashboard report as CSV');
+  };
+
+  const handleExportPdf = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('Dashboard Report', 14, 16);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${dayjs().format('YYYY-MM-DD HH:mm:ss')}`, 14, 23);
+    doc.text(`Zone Filter: ${selectedZoneLabel}`, 14, 29);
+
+    autoTable(doc, {
+      startY: 34,
+      head: [['Section', 'Metric', 'Value']],
+      body: [
+        ['General', 'Total Slots', safeNumber(totalDisplay)],
+        ['General', 'Available Slots', safeNumber(pieData[0]?.value)],
+        ['General', 'Occupied Slots', safeNumber(pieData[1]?.value)],
+        ['Turnover', 'Total Sessions', safeNumber(turnoverData?.totalSessions)],
+        ['Turnover', 'Total Slots', safeNumber(turnoverData?.totalSlots)],
+        ['Turnover', 'Turnover Rate', `${(Number.isFinite(turnoverPercent) ? turnoverPercent : 0).toFixed(2)}%`],
+        ['Revenue', 'Total Revenue', formatCurrency(revenueData?.totalRevenue)],
+        ['Revenue', 'Total Sessions', safeNumber(revenueData?.totalSessions)],
+      ],
+    });
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 8,
+      head: [['Zone', 'Available', 'Occupied']],
+      body: occupancyChartData.map((row) => [row.name, row.available, row.occupied]),
+      didDrawPage: () => {
+        doc.setFontSize(12);
+        doc.text('Occupancy by Zone', 14, doc.lastAutoTable.settings.startY - 2);
+      },
+    });
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 8,
+      head: [['Period', 'Revenue', 'Sessions']],
+      body: revenueSeriesData.map((row) => [row.name, formatCurrency(row.revenue), row.sessions]),
+      didDrawPage: () => {
+        doc.setFontSize(12);
+        doc.text('Revenue Trend', 14, doc.lastAutoTable.settings.startY - 2);
+      },
+    });
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 8,
+      head: [['Period', 'Sessions', 'Turnover Rate (%)']],
+      body: turnoverSeriesData.map((row) => [row.name, row.sessions, row.turnoverRate.toFixed(2)]),
+      didDrawPage: () => {
+        doc.setFontSize(12);
+        doc.text('Turnover Trend', 14, doc.lastAutoTable.settings.startY - 2);
+      },
+    });
+
+    doc.save(`dashboard-report-${dayjs().format('YYYYMMDD-HHmmss')}.pdf`);
+    message.success('Exported dashboard report as PDF');
+  };
 
   return (
     <Spin spinning={isLoading}>
@@ -442,6 +638,16 @@ const DashboardPage = () => {
                   onChange={(value) => value && setTurnoverRange(value)}
                   style={{ width: '100%' }}
                 />
+              </Space>
+            </Col>
+            <Col span={24}>
+              <Space size={8}>
+                <Button icon={<FileExcelOutlined />} onClick={handleExportCsv}>
+                  Export CSV
+                </Button>
+                <Button type="primary" icon={<FilePdfOutlined />} onClick={handleExportPdf}>
+                  Export PDF
+                </Button>
               </Space>
             </Col>
           </Row>
@@ -568,16 +774,30 @@ const DashboardPage = () => {
                   }
                 >
                   <Spin spinning={turnoverLoading}>
-                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                      <Statistic title="Total Sessions" value={turnoverData?.totalSessions || 0} />
-                      <Statistic title="Total Slots" value={turnoverData?.totalSlots || 0} />
-                      <Statistic
-                        title="Turnover Rate"
-                        value={Number.isFinite(turnoverPercent) ? turnoverPercent : 0}
-                        precision={2}
-                        suffix="%"
-                      />
-                    </Space>
+                    <div style={{ marginBottom: 8 }}>
+                      <Text type="secondary">
+                        Overall turnover: {(Number.isFinite(turnoverPercent) ? turnoverPercent : 0).toFixed(2)}%
+                      </Text>
+                    </div>
+                    <div style={{ width: '100%', height: 220 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={turnoverSeriesData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="name" />
+                          <YAxis yAxisId="left" />
+                          <YAxis yAxisId="right" orientation="right" />
+                          <Tooltip />
+                          <Legend />
+                          <Bar yAxisId="left" dataKey="sessions" fill="#1677ff" name="Sessions" />
+                          <Bar
+                            yAxisId="right"
+                            dataKey="turnoverRate"
+                            fill="#52c41a"
+                            name="Turnover Rate (%)"
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
                   </Spin>
                 </Card>
               </Col>
@@ -608,10 +828,49 @@ const DashboardPage = () => {
                           style={{ width: '100%' }}
                         />
                       )}
-                      <Statistic title="Total Revenue" value={revenueData?.totalRevenue || 0} />
-                      <Statistic title="Total Sessions" value={revenueData?.totalSessions || 0} />
+                      <Text strong>Total Revenue: {formatCurrency(revenueData?.totalRevenue || 0)}</Text>
+                      <div style={{ width: '100%', height: 220 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={revenueSeriesData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" />
+                            <YAxis />
+                            <Tooltip
+                              formatter={(value, key) =>
+                                key === 'revenue' ? formatCurrency(value) : safeNumber(value)
+                              }
+                            />
+                            <Legend />
+                            <Line
+                              type="monotone"
+                              dataKey="revenue"
+                              stroke="#722ed1"
+                              strokeWidth={2}
+                              dot={{ r: 3 }}
+                              name="Revenue"
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
                     </Space>
                   </Spin>
+                </Card>
+              </Col>
+              <Col span={24}>
+                <Card title="Occupancy by Zone" style={{ borderRadius: 10 }} bordered={false}>
+                  <div style={{ width: '100%', height: 280 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={occupancyChartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="available" fill="#52c41a" name="Available" />
+                        <Bar dataKey="occupied" fill="#595959" name="Occupied" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </Card>
               </Col>
               <Col span={24}>

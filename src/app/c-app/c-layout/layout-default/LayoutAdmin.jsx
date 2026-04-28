@@ -23,7 +23,6 @@ export const IotCategoryNavContext = React.createContext({
   categories: [],
   refreshCategories: async () => [],
   setHighlightCategoryCode: () => {},
-  removeCategoryFromNav: () => {},
 });
 
 const { Sider, Content } = Layout;
@@ -94,16 +93,14 @@ const MenuList = ({ language }) => {
   const menuLabels = {
     en: {
       manageMap: 'Manage Map',
-      iotCategoryManagement: 'IoT Category Management',
-      iotCategories: 'Manage Categories',
+      iotDeviceManagement: 'IoT Device Management',
       barrierControl: 'Barrier Control',
       userManagement: 'User Management',
       dashboard: 'Dashboard & Reports',
     },
     vi: {
       manageMap: 'Quan ly ban do',
-      iotCategoryManagement: 'Quan ly danh muc IoT',
-      iotCategories: 'Quan ly danh muc',
+      iotDeviceManagement: 'Quan ly thiet bi IoT',
       barrierControl: 'Kiem soat barrier',
       userManagement: 'Quan ly nguoi dung',
       dashboard: 'Bang dieu khien va bao cao',
@@ -113,13 +110,20 @@ const MenuList = ({ language }) => {
   const labels = menuLabels[language] || menuLabels.en;
 
   const categoryMenuItems = useMemo(
-    () =>
-      categories.map((category) => ({
-        key: `iot-device-${category.code}`,
+    () => [
+      {
+        key: 'iot-sensors',
         className:
-          highlightCategoryCode === category.code ? 'iot-category-menu-item iot-category-menu-item--new' : 'iot-category-menu-item',
-        label: <Link to={`/admin/iot-devices/${category.code}`}>{category.name || category.code}</Link>,
-      })),
+          highlightCategoryCode === 'CA001' ? 'iot-category-menu-item iot-category-menu-item--new' : 'iot-category-menu-item',
+        label: <Link to="/admin/iot-sensors">Sensors</Link>,
+      },
+      {
+        key: 'iot-cameras',
+        className:
+          highlightCategoryCode === 'CA002' ? 'iot-category-menu-item iot-category-menu-item--new' : 'iot-category-menu-item',
+        label: <Link to="/admin/iot-cameras">Cameras</Link>,
+      },
+    ],
     [categories, highlightCategoryCode],
   );
 
@@ -137,14 +141,8 @@ const MenuList = ({ language }) => {
     {
       key: 'iot-management',
       icon: <ThunderboltOutlined />,
-      label: labels.iotCategoryManagement,
-      children: [
-        {
-          key: 'iot-categories',
-          label: <Link to="/admin/iot-categories">{labels.iotCategories}</Link>,
-        },
-        ...categoryMenuItems,
-      ],
+      label: labels.iotDeviceManagement,
+      children: categoryMenuItems,
     },
     {
       key: 'barrier',
@@ -159,11 +157,8 @@ const MenuList = ({ language }) => {
   ];
 
   const selectedKey = useMemo(() => {
-    if (location.pathname.includes('/admin/iot-categories')) return 'iot-categories';
-    if (location.pathname.includes('/admin/iot-devices/')) {
-      const code = location.pathname.split('/admin/iot-devices/')[1];
-      return code ? `iot-device-${code}` : '';
-    }
+    if (location.pathname.includes('/admin/iot-sensors')) return 'iot-sensors';
+    if (location.pathname.includes('/admin/iot-cameras')) return 'iot-cameras';
     if (location.pathname.includes('/admin/users')) return 'users';
     if (location.pathname.includes('/admin/barrier-control')) return 'barrier';
     if (location.pathname.includes('/admin/dashboard')) return 'dashboard';
@@ -237,10 +232,6 @@ const LayoutAdmin = () => {
           highlightCategoryCode,
           refreshCategories,
           setHighlightCategoryCode,
-          removeCategoryFromNav: (categoryCode) => {
-            setCategories((prev) => prev.filter((category) => category.code !== categoryCode));
-            setHighlightCategoryCode((prev) => (prev === categoryCode ? null : prev));
-          },
         }}
       >
         <Layout style={{ minHeight: '100vh' }}>

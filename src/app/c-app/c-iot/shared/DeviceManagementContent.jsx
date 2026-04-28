@@ -27,16 +27,16 @@ import {
   SearchOutlined,
   WifiOutlined,
 } from '@ant-design/icons';
-import { Navigate, useParams } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import axiosClient from '../../../c-lib/axios/axiosClient.service';
-import { CATEGORY_IOT_API, SENSOR_API } from '../../../c-lib/constants/auth-api.constant';
+import { CATEGORY_IOT_API } from '../../../c-lib/constants/auth-api.constant';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-const getCategoryDisplayName = (category) => {
-  if (!category) return null;
-  return category.name || category.code || 'IoT Device';
+const getCategoryDisplayName = (category, fallbackName) => {
+  if (!category) return fallbackName;
+  return category.name || category.code || fallbackName;
 };
 
 const getStatus = (device) => {
@@ -50,17 +50,13 @@ const statusConfig = {
 };
 
 const DEVICE_STATUSES = ['Online', 'Offline'];
-const CATEGORY_PAGE_CONFIG = {
-  CA001: {
-    entityName: 'Sensor',
-    showLinkedSlot: true,
-    showUnlinkedStat: true,
-  },
-  CA002: {
-    entityName: 'Camera',
-    showLinkedSlot: false,
-    showUnlinkedStat: false,
-  },
+
+const getSlotLabel = (slotValue) => {
+  if (!slotValue) return '';
+  if (typeof slotValue === 'object') {
+    return slotValue?.nameSlot || slotValue?.code || '';
+  }
+  return String(slotValue);
 };
 
 const DeviceFormModal = ({
@@ -72,25 +68,28 @@ const DeviceFormModal = ({
   confirmLoading,
   selectedCategory,
   pageConfig,
+  getDeviceStatus,
 }) => {
   const [form] = Form.useForm();
 
   useEffect(() => {
     if (!open) return;
     if (mode === 'edit' && initialData) {
-      form.setFieldsValue({
+      const nextValues = {
         _id: initialData._id,
         code: initialData.code,
-        status: getStatus(initialData),
-        slotId:
-          typeof initialData.slotId === 'object'
-            ? initialData.slotId?.code || initialData.slotId?.nameSlot || ''
-            : initialData.slotId || '',
-      });
+        status: getDeviceStatus(initialData),
+      };
+
+      if (pageConfig.showLinkedSlot) {
+        nextValues.slotId = getSlotLabel(initialData.slotId);
+      }
+
+      form.setFieldsValue(nextValues);
       return;
     }
     form.resetFields();
-  }, [open, mode, initialData, form]);
+  }, [open, mode, initialData, form, pageConfig.showLinkedSlot, getDeviceStatus]);
 
   const handleOk = async () => {
     try {
@@ -108,7 +107,7 @@ const DeviceFormModal = ({
           <ApiOutlined style={{ color: '#1677ff' }} />
           <span>
             {mode === 'add'
-              ? `Add ${selectedCategory?.name || pageConfig.entityName}`
+              ? `Add ${pageConfig.entityName}`
               : `Edit ${pageConfig.entityName}`}
           </span>
         </Space>
@@ -126,7 +125,7 @@ const DeviceFormModal = ({
     >
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
         <Form.Item label="Category">
-          <Input value={selectedCategory?.name || 'N/A'} disabled />
+          <Input value={pageConfig.entityName} disabled />
         </Form.Item>
 
         {mode === 'edit' && (
@@ -190,14 +189,12 @@ const DeleteConfirmModal = ({ open, device, onClose, onDelete, confirmLoading, c
   );
 };
 
-const DeviceManagement = () => {
-  const { categoryCode } = useParams();
+const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboard', pageConfig, apiConfig }) => {
   const [devices, setDevices] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [categoriesLoaded, setCategoriesLoaded] = useState(false);
-
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [formModalOpen, setFormModalOpen] = useState(false);
@@ -205,6 +202,34 @@ const DeviceManagement = () => {
   const [editingDevice, setEditingDevice] = useState(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deletingDevice, setDeletingDevice] = useState(null);
+
+  const getDeviceStatus = pageConfig.getDeviceStatus || getStatus;
+  const getDeviceCategoryCode = pageConfig.getDeviceCategoryCode || ((device) => device.categoryId?.code);
+  const getSearchableText =
+    pageConfig.getSearchableText ||
+    ((device) => {
+      const parts = [String(device.code || '')];
+      if (pageConfig.showLinkedSlot) {
+        parts.push(getSlotLabel(device.slotId));
+      }
+      return parts.join(' ').toLowerCase();
+    });
+  const buildCreatePayload =
+    pageConfig.buildCreatePayload ||
+    (() => ({
+      code: '0',
+      categoryCode,
+    }));
+  const buildUpdatePayload =
+    pageConfig.buildUpdatePayload ||
+    ((device, values) => ({
+      _id: device._id,
+      code: device.code,
+      categoryCode,
+      isOnline: values.status === 'Online',
+      isActive: 1,
+      ...(pageConfig.showLinkedSlot ? { slotId: values.slotId } : {}),
+    }));
 
   const fetchCategories = async () => {
     try {
@@ -230,7 +255,7 @@ const DeviceManagement = () => {
   const fetchDevices = async () => {
     setLoading(true);
     try {
-      const response = await axiosClient.post(SENSOR_API.GET_LIST, {});
+      const response = await axiosClient.post(apiConfig.GET_LIST, {});
       if (response?.success) {
         setDevices(response.data || []);
       } else {
@@ -259,38 +284,21 @@ const DeviceManagement = () => {
     [categories, categoryCode],
   );
 
-  const pageConfig = useMemo(
-    () => ({
-      entityName: 'Device',
-      showLinkedSlot: true,
-      showUnlinkedStat: true,
-      ...(CATEGORY_PAGE_CONFIG[categoryCode] || {}),
-    }),
-    [categoryCode],
-  );
-
   const categoryDevices = useMemo(
-    () => devices.filter((device) => device.categoryId?.code === categoryCode),
-    [devices, categoryCode],
+    () => devices.filter((device) => getDeviceCategoryCode(device) === categoryCode),
+    [devices, categoryCode, getDeviceCategoryCode],
   );
 
   const filteredDevices = useMemo(
     () =>
       categoryDevices.filter((device) => {
-        const slotLabel = device.slotId
-          ? typeof device.slotId === 'object'
-            ? device.slotId?.nameSlot || device.slotId?.code || ''
-            : String(device.slotId)
-          : '';
-        const matchSearch =
-          String(device.code || '')
-            .toLowerCase()
-            .includes(searchText.toLowerCase()) || slotLabel.toLowerCase().includes(searchText.toLowerCase());
-        const deviceStatus = getStatus(device);
+        const normalizedKeyword = searchText.toLowerCase();
+        const matchSearch = getSearchableText(device).includes(normalizedKeyword);
+        const deviceStatus = getDeviceStatus(device);
         const matchStatus = statusFilter === 'All' || deviceStatus === statusFilter;
         return matchSearch && matchStatus;
       }),
-    [categoryDevices, searchText, statusFilter],
+    [categoryDevices, searchText, statusFilter, getSearchableText, getDeviceStatus],
   );
 
   const stats = useMemo(() => {
@@ -298,7 +306,7 @@ const DeviceManagement = () => {
     let offline = 0;
 
     categoryDevices.forEach((device) => {
-      const status = getStatus(device);
+      const status = getDeviceStatus(device);
       if (status === 'Online') online += 1;
       else offline += 1;
     });
@@ -309,7 +317,7 @@ const DeviceManagement = () => {
       offline,
       unlinked: categoryDevices.filter((device) => !device.slotId).length,
     };
-  }, [categoryDevices]);
+  }, [categoryDevices, getDeviceStatus]);
 
   const openAddModal = () => {
     setFormMode('add');
@@ -326,28 +334,8 @@ const DeviceManagement = () => {
   const handleFormSubmit = async (values) => {
     setFormLoading(true);
     try {
-      const statusPayload =
-        formMode === 'edit'
-          ? values.status === 'Online'
-            ? { isOnline: true, isActive: 1 }
-            : { isOnline: false, isActive: 1 }
-          : {};
-
-      const payload =
-        formMode === 'add'
-          ? {
-              code: '0',
-              categoryCode,
-            }
-          : {
-              _id: editingDevice._id,
-              code: editingDevice.code,
-              categoryCode,
-              ...statusPayload,
-              ...(pageConfig.showLinkedSlot ? { slotId: values.slotId } : {}),
-            };
-
-      const response = await axiosClient.post(SENSOR_API.UPDATE, payload);
+      const payload = formMode === 'add' ? buildCreatePayload(values) : buildUpdatePayload(editingDevice, values);
+      const response = await axiosClient.post(apiConfig.UPDATE, payload);
       if (response?.success) {
         notification.success({
           message: formMode === 'add' ? 'Device added' : 'Device updated',
@@ -374,7 +362,7 @@ const DeviceManagement = () => {
   const handleDeleteDevice = async (code) => {
     setFormLoading(true);
     try {
-      const response = await axiosClient.post(SENSOR_API.DELETE, { items: [code] });
+      const response = await axiosClient.post(apiConfig.DELETE, { items: [code] });
       if (response?.success) {
         notification.success({
           message: 'Device deleted',
@@ -425,9 +413,9 @@ const DeviceManagement = () => {
       title: 'Status',
       key: 'status',
       filters: DEVICE_STATUSES.map((status) => ({ text: status, value: status })),
-      onFilter: (value, record) => getStatus(record) === value,
+      onFilter: (value, record) => getDeviceStatus(record) === value,
       render: (_, record) => {
-        const status = getStatus(record);
+        const status = getDeviceStatus(record);
         const config = statusConfig[status] || { color: 'default', label: status, icon: null };
         return (
           <Badge
@@ -469,7 +457,7 @@ const DeviceManagement = () => {
   ].filter(Boolean);
 
   if (categoriesLoaded && !selectedCategory) {
-    return <Navigate to="/admin/iot-categories" replace />;
+    return <Navigate to={fallbackPath} replace />;
   }
 
   return (
@@ -477,10 +465,10 @@ const DeviceManagement = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, gap: 12, flexWrap: 'wrap' }}>
         <div>
           <Title level={2} style={{ margin: 0 }}>
-            {selectedCategory?.name || 'IoT Device Management'}
+            {pageConfig.title}
           </Title>
           <Text type="secondary">
-            Manage {pageConfig.entityName.toLowerCase()} records filtered by category using the shared IoT API.
+            {pageConfig.description}
           </Text>
         </div>
         <Space>
@@ -551,7 +539,7 @@ const DeviceManagement = () => {
         scroll={{ x: 900 }}
         pagination={{ pageSize: 5, showSizeChanger: true, showTotal: (total) => `${total} devices` }}
         loading={loading}
-        locale={{ emptyText: 'No devices found.' }}
+        locale={{ emptyText: `No ${pageConfig.entityName.toLowerCase()}s found.` }}
       />
 
       <DeviceFormModal
@@ -560,6 +548,7 @@ const DeviceManagement = () => {
         initialData={editingDevice}
         selectedCategory={selectedCategory}
         pageConfig={pageConfig}
+        getDeviceStatus={getDeviceStatus}
         onClose={() => setFormModalOpen(false)}
         onSubmit={handleFormSubmit}
         confirmLoading={formLoading}
@@ -571,10 +560,10 @@ const DeviceManagement = () => {
         onClose={() => setDeleteModalOpen(false)}
         onDelete={handleDeleteDevice}
         confirmLoading={formLoading}
-        categoryName={getCategoryDisplayName(selectedCategory)}
+        categoryName={getCategoryDisplayName(selectedCategory, pageConfig.entityName)}
       />
     </div>
   );
 };
 
-export default DeviceManagement;
+export default DeviceManagementContent;

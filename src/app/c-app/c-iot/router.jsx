@@ -1,20 +1,35 @@
 // d:\Dev\DoAn\CarParking\src\app\c-app\c-iot\router.jsx
-import React from 'react';
+import React, { useContext } from 'react';
 import { Navigate } from 'react-router-dom';
-import DeviceManagement from './pages/DeviceManagement';
-import IotCategoryManagement from './pages/IotCategoryManagement';
+import SensorManagement from './pages/SensorManagement';
+import CameraManagement from './pages/CameraManagement';
+import { IotCategoryNavContext } from '../c-layout/layout-default/LayoutAdmin';
+
+const DeviceRouteRedirect = () => {
+  const { categories } = useContext(IotCategoryNavContext);
+
+  if (categories.some((category) => category.code === 'CA001')) {
+    return <Navigate to="/admin/iot-sensors" replace />;
+  }
+
+  if (categories.some((category) => category.code === 'CA002')) {
+    return <Navigate to="/admin/iot-cameras" replace />;
+  }
+
+  return <Navigate to="/admin/dashboard" replace />;
+};
 
 export const deviceRoutes = [
   {
-    path: 'iot-categories',
-    element: <IotCategoryManagement />,
-  },
-  {
     path: 'devices',
-    element: <Navigate to="/admin/iot-categories" replace />,
+    element: <DeviceRouteRedirect />,
   },
   {
-    path: 'iot-devices/:categoryCode',
-    element: <DeviceManagement />,
+    path: 'iot-sensors',
+    element: <SensorManagement />,
+  },
+  {
+    path: 'iot-cameras',
+    element: <CameraManagement />,
   },
 ];

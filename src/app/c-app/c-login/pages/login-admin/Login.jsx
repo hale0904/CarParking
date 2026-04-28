@@ -28,7 +28,7 @@ function Login001() {
         description: 'Đăng nhập thành công vào hệ thống Smart Parking.',
         placement: 'topRight',
       });
-      navigate('/admin');
+      navigate('/admin/dashboard');
     } catch (err) {
       notification.error({
         message: 'Đăng nhập thất bại',
