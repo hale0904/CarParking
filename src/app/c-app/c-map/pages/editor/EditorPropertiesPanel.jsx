@@ -3,7 +3,7 @@ import { Empty, Form, Input, InputNumber, Select, Button, Tag, Typography, Color
 import { ReloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
 
 import axiosClient from '../../../../c-lib/axios/axiosClient.service';
-import { PARKING_API } from '../../../../c-lib/constants/auth-api.constant';
+import { PARKING_API } from '../../../../c-lib/api/parking.api';
 
 const { Title, Text } = Typography;
 const { Option } = Select;

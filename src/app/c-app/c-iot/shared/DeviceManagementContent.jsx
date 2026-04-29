@@ -29,7 +29,7 @@ import {
 } from '@ant-design/icons';
 import { Navigate } from 'react-router-dom';
 import axiosClient from '../../../c-lib/axios/axiosClient.service';
-import { CATEGORY_IOT_API } from '../../../c-lib/constants/auth-api.constant';
+import { CATEGORY_IOT_API } from '../../../c-lib/api/iot.api';
 
 const { Title, Text } = Typography;
 const { Option } = Select;

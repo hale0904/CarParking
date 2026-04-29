@@ -16,7 +16,7 @@ import {
 } from '../utils/slotNaming';
 import './parkingMapEditor.scss';
 import axiosClient from '../../../c-lib/axios/axiosClient.service';
-import { PARKING_API } from '../../../c-lib/constants/auth-api.constant';
+import { PARKING_API } from '../../../c-lib/api/parking.api';
 import { io } from 'socket.io-client';
 
 const SLOT_SIZE = { width: 25, height: 40 };

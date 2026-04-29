@@ -19,17 +19,18 @@ const LprLogTable = ({ lprLogs }) => {
   const handleModalSubmit = () => {
     form.validateFields().then((values) => {
       const { manualPlate } = values;
-      
-      // Update logs: set new OCR result and change status to Matched (Manual)
-      setLogs(prev => prev.map(log => 
-        log.id === editingLog.id 
-          ? { ...log, ocrResult: manualPlate, status: 'Matched (Manual)' } 
-          : log
-      ));
+
+      setLogs((prev) =>
+        prev.map((log) =>
+          log.id === editingLog.id
+            ? { ...log, ocrResult: manualPlate, status: 'Matched (Manual)', decision: 'Allowed' }
+            : log,
+        ),
+      );
 
       notification.success({
         message: 'Plate Updated',
-        description: `License plate manually set to ${manualPlate}.`
+        description: `License plate manually set to ${manualPlate}.`,
       });
 
       setModalVisible(false);
@@ -45,6 +46,11 @@ const LprLogTable = ({ lprLogs }) => {
       render: (text) => <Text>{new Date(text).toLocaleString()}</Text>,
     },
     {
+      title: 'Barrier',
+      dataIndex: 'barrierId',
+      key: 'barrierId',
+    },
+    {
       title: 'Captured Image',
       dataIndex: 'image',
       key: 'image',
@@ -54,7 +60,7 @@ const LprLogTable = ({ lprLogs }) => {
       title: 'OCR Result',
       dataIndex: 'ocrResult',
       key: 'ocrResult',
-      render: (text) => text ? <Text strong code>{text}</Text> : <Text type="secondary">N/A</Text>,
+      render: (text) => (text ? <Text strong code>{text}</Text> : <Text type="secondary">N/A</Text>),
     },
     {
       title: 'Match Status',
@@ -68,14 +74,24 @@ const LprLogTable = ({ lprLogs }) => {
       },
     },
     {
+      title: 'Decision',
+      dataIndex: 'decision',
+      key: 'decision',
+      render: (decision) => (
+        <Tag color={decision === 'Allowed' ? 'green' : decision === 'Awaiting payment' ? 'gold' : 'default'}>
+          {decision}
+        </Tag>
+      ),
+    },
+    {
       title: 'Action',
       key: 'action',
       render: (_, record) => {
         if (record.status === 'Failed') {
           return (
-            <Button 
-              type="primary" 
-              size="small" 
+            <Button
+              type="primary"
+              size="small"
               icon={<EditOutlined />}
               onClick={() => handleManualInput(record)}
             >
@@ -83,19 +99,19 @@ const LprLogTable = ({ lprLogs }) => {
             </Button>
           );
         }
-        return <Text type="secondary">—</Text>;
+        return <Text type="secondary">-</Text>;
       },
     },
   ];
 
   return (
     <div>
-      <Table 
-        columns={columns} 
-        dataSource={logs} 
+      <Table
+        columns={columns}
+        dataSource={logs}
         rowKey="id"
         pagination={{ pageSize: 10, showSizeChanger: false }}
-        rowClassName={(record) => record.status === 'Failed' ? 'highlight-row-failed' : ''}
+        rowClassName={(record) => (record.status === 'Failed' ? 'highlight-row-failed' : '')}
         scroll={{ x: 'max-content' }}
       />
 
@@ -115,8 +131,8 @@ const LprLogTable = ({ lprLogs }) => {
           <p style={{ marginTop: 8 }}>Please inspect the image and enter the correct plate number.</p>
         </div>
         <Form form={form} layout="vertical">
-          <Form.Item 
-            name="manualPlate" 
+          <Form.Item
+            name="manualPlate"
             label="License Plate Number"
             rules={[{ required: true, message: 'Please input the license plate number' }]}
           >

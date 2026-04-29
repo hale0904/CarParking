@@ -1,5 +1,5 @@
 import axiosClient from '../../../../c-lib/axios/axiosClient.service';
-import { PARKING_API } from '../../../../c-lib/constants/auth-api.constant';
+import { PARKING_API } from '../../../../c-lib/api/parking.api';
 
 /**
  * @param {ParkingListParams} parkingListParams

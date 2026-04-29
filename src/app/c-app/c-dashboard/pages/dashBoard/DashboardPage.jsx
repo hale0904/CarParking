@@ -35,14 +35,13 @@ import {
 } from 'recharts';
 import axiosClient from '../../../../c-lib/axios/axiosClient.service';
 import dayjs from 'dayjs';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import {
+  EXPORT_API,
   PARKING_API,
   STATISTICAL_API,
   TURNOVER_API,
   REVENUE_API,
-} from '../../../../c-lib/constants/auth-api.constant';
+} from '../../../../c-lib/api';
 import EditorCanvas from '../../../c-map/pages/editor/EditorCanvas';
 import { io } from 'socket.io-client';
 
@@ -56,6 +55,18 @@ const CURRENCY_FORMATTER = new Intl.NumberFormat('vi-VN', { style: 'currency', c
 
 const safeNumber = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
 const formatCurrency = (value) => CURRENCY_FORMATTER.format(safeNumber(value));
+const EXPORT_FORMAT_CONFIG = {
+  pdf: {
+    extension: 'pdf',
+    mimeType: 'application/pdf',
+    successMessage: 'Exported parking report as PDF',
+  },
+  excel: {
+    extension: 'xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    successMessage: 'Exported parking report as Excel',
+  },
+};
 
 const getFirstAvailableArray = (source, keys) => {
   if (!source || typeof source !== 'object') return [];
@@ -74,6 +85,55 @@ const getLabelFromItem = (item, fallbackIndex) =>
   item?.time ||
   item?.name ||
   `Point ${fallbackIndex + 1}`;
+
+const getFilenameFromDisposition = (contentDisposition, fallbackFilename) => {
+  if (!contentDisposition) return fallbackFilename;
+
+  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1]);
+  }
+
+  const asciiMatch = contentDisposition.match(/filename="?([^"]+)"?/i);
+  if (asciiMatch?.[1]) {
+    return asciiMatch[1];
+  }
+
+  return fallbackFilename;
+};
+
+const parseBlobErrorMessage = async (error) => {
+  const blob = error?.response?.data;
+  if (!(blob instanceof Blob)) {
+    return error?.response?.data?.message || error?.message || null;
+  }
+
+  try {
+    const text = await blob.text();
+    if (!text) return error?.message || null;
+
+    try {
+      const parsed = JSON.parse(text);
+      return parsed?.message || parsed?.error || error?.message || null;
+    } catch {
+      return text;
+    }
+  } catch {
+    return error?.message || null;
+  }
+};
+
+const translateExportErrorMessage = (messageText) => {
+  if (!messageText) return 'Failed to export parking report';
+
+  if (messageText.includes('Không có dữ liệu cho các bộ lọc đã chọn')) {
+    return 'No data matches the selected filters. Export was cancelled.';
+  }
+
+  return messageText;
+};
+
+const escapeCsvCell = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
 
 const parseLegacyLanesToGraph = (lanesApiData, apiNodes = []) => {
   const laneNodes = [];
@@ -190,6 +250,7 @@ const DashboardPage = () => {
   const [statsLoading, setStatsLoading] = useState(false);
   const [turnoverLoading, setTurnoverLoading] = useState(false);
   const [revenueLoading, setRevenueLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -490,7 +551,71 @@ const DashboardPage = () => {
     ];
   }, [turnoverData]);
 
+  const handleExportReport = async (format) => {
+    const config = EXPORT_FORMAT_CONFIG[format];
+    if (!config) return;
+    if (!statisticalRange || statisticalRange.length !== 2) {
+      message.warning('Please select a valid statistical time range before exporting.');
+      return;
+    }
+    if (statsLoading) {
+      message.info('Statistical data is still loading. Please wait a moment and try again.');
+      return;
+    }
+    if (statsData && (!statsData.zones || statsData.zones.length === 0)) {
+      message.warning(
+        'No statistical data is available for the current filters, so the report cannot be exported.',
+      );
+      return;
+    }
+
+    setExportLoading(format);
+    try {
+      const response = await axiosClient.post(
+        EXPORT_API.EXPORT_REPORT,
+        {
+          expectedArrivalTime: statisticalRange[0].format('YYYY-MM-DDTHH:mm:ss'),
+          expectedLeaveTime: statisticalRange[1].format('YYYY-MM-DDTHH:mm:ss'),
+          zoneIds: selectedZoneIds,
+          format,
+        },
+        {
+          responseType: 'blob',
+          _returnFullResponse: true,
+        },
+      );
+
+      const blob = new Blob([response.data], {
+        type: response.headers['content-type'] || config.mimeType,
+      });
+      const fallbackFilename = `parking-report-${dayjs().format('YYYYMMDD-HHmmss')}.${config.extension}`;
+      const filename = getFilenameFromDisposition(
+        response.headers['content-disposition'],
+        fallbackFilename,
+      );
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      message.success(config.successMessage);
+    } catch (err) {
+      const errorMessage = await parseBlobErrorMessage(err);
+      message.error(translateExportErrorMessage(errorMessage));
+    } finally {
+      setExportLoading(null);
+    }
+  };
+
   const handleExportCsv = () => {
+    if (statsLoading || turnoverLoading || revenueLoading) {
+      message.info('Dashboard data is still loading. Please wait a moment and try again.');
+      return;
+    }
+
     const summaryRows = [
       ['Section', 'Metric', 'Value'],
       ['General', 'Selected Zones', selectedZoneLabel],
@@ -526,7 +651,7 @@ const DashboardPage = () => {
     ];
 
     const csvContent = [...summaryRows, ...occupancyRows, ...revenueRows, ...turnoverRows]
-      .map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"', '""')}"`).join(','))
+      .map((row) => row.map(escapeCsvCell).join(','))
       .join('\n');
 
     const blob = new Blob([`\ufeff${csvContent}`], { type: 'text/csv;charset=utf-8;' });
@@ -534,66 +659,11 @@ const DashboardPage = () => {
     const link = document.createElement('a');
     link.href = url;
     link.download = `dashboard-report-${dayjs().format('YYYYMMDD-HHmmss')}.csv`;
+    document.body.appendChild(link);
     link.click();
+    link.remove();
     window.URL.revokeObjectURL(url);
     message.success('Exported dashboard report as CSV');
-  };
-
-  const handleExportPdf = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text('Dashboard Report', 14, 16);
-    doc.setFontSize(10);
-    doc.text(`Generated: ${dayjs().format('YYYY-MM-DD HH:mm:ss')}`, 14, 23);
-    doc.text(`Zone Filter: ${selectedZoneLabel}`, 14, 29);
-
-    autoTable(doc, {
-      startY: 34,
-      head: [['Section', 'Metric', 'Value']],
-      body: [
-        ['General', 'Total Slots', safeNumber(totalDisplay)],
-        ['General', 'Available Slots', safeNumber(pieData[0]?.value)],
-        ['General', 'Occupied Slots', safeNumber(pieData[1]?.value)],
-        ['Turnover', 'Total Sessions', safeNumber(turnoverData?.totalSessions)],
-        ['Turnover', 'Total Slots', safeNumber(turnoverData?.totalSlots)],
-        ['Turnover', 'Turnover Rate', `${(Number.isFinite(turnoverPercent) ? turnoverPercent : 0).toFixed(2)}%`],
-        ['Revenue', 'Total Revenue', formatCurrency(revenueData?.totalRevenue)],
-        ['Revenue', 'Total Sessions', safeNumber(revenueData?.totalSessions)],
-      ],
-    });
-
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 8,
-      head: [['Zone', 'Available', 'Occupied']],
-      body: occupancyChartData.map((row) => [row.name, row.available, row.occupied]),
-      didDrawPage: () => {
-        doc.setFontSize(12);
-        doc.text('Occupancy by Zone', 14, doc.lastAutoTable.settings.startY - 2);
-      },
-    });
-
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 8,
-      head: [['Period', 'Revenue', 'Sessions']],
-      body: revenueSeriesData.map((row) => [row.name, formatCurrency(row.revenue), row.sessions]),
-      didDrawPage: () => {
-        doc.setFontSize(12);
-        doc.text('Revenue Trend', 14, doc.lastAutoTable.settings.startY - 2);
-      },
-    });
-
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 8,
-      head: [['Period', 'Sessions', 'Turnover Rate (%)']],
-      body: turnoverSeriesData.map((row) => [row.name, row.sessions, row.turnoverRate.toFixed(2)]),
-      didDrawPage: () => {
-        doc.setFontSize(12);
-        doc.text('Turnover Trend', 14, doc.lastAutoTable.settings.startY - 2);
-      },
-    });
-
-    doc.save(`dashboard-report-${dayjs().format('YYYYMMDD-HHmmss')}.pdf`);
-    message.success('Exported dashboard report as PDF');
   };
 
   return (
@@ -642,10 +712,18 @@ const DashboardPage = () => {
             </Col>
             <Col span={24}>
               <Space size={8}>
-                <Button icon={<FileExcelOutlined />} onClick={handleExportCsv}>
+                <Button
+                  icon={<FileExcelOutlined />}
+                  onClick={handleExportCsv}
+                >
                   Export CSV
                 </Button>
-                <Button type="primary" icon={<FilePdfOutlined />} onClick={handleExportPdf}>
+                <Button
+                  type="primary"
+                  icon={<FilePdfOutlined />}
+                  onClick={() => handleExportReport('pdf')}
+                  loading={exportLoading === 'pdf'}
+                >
                   Export PDF
                 </Button>
               </Space>

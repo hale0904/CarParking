@@ -1,6 +1,6 @@
 import React from 'react';
 import DeviceManagementContent from '../shared/DeviceManagementContent';
-import { CAMERA_API } from '../../../c-lib/constants/auth-api.constant';
+import { CAMERA_API } from '../../../c-lib/api/iot.api';
 
 const CameraManagement = () => (
   <DeviceManagementContent
@@ -22,7 +22,6 @@ const CameraManagement = () => (
         code: device.code,
         categoryCode: 'CA002',
         isOnline: values.status === 'Online',
-        isActive: 1,
       }),
     }}
   />

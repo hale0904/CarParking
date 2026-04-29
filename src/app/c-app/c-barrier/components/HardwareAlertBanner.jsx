@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Space, Button } from 'antd';
 import { WarningOutlined, ClockCircleOutlined, DisconnectOutlined } from '@ant-design/icons';
 
@@ -10,38 +10,47 @@ const getAlertProps = (type) => {
       return { icon: <ClockCircleOutlined />, color: 'warning' };
     case 'Sensor Offline':
       return { icon: <DisconnectOutlined />, color: 'error' };
+    case 'Fail-Safe Release':
+      return { icon: <WarningOutlined />, color: 'warning' };
+    case 'Offline Override':
+      return { icon: <DisconnectOutlined />, color: 'warning' };
+    case 'Reliability Monitor':
+      return { icon: <ClockCircleOutlined />, color: 'info' };
     default:
       return { icon: <WarningOutlined />, color: 'info' };
   }
 };
 
-const HardwareAlertBanner = ({ alerts: initialAlerts }) => {
-  const [activeAlerts, setActiveAlerts] = useState(initialAlerts || []);
+const HardwareAlertBanner = ({ alerts }) => {
+  const [activeAlerts, setActiveAlerts] = useState(alerts || []);
 
   useEffect(() => {
-    // Auto-dismiss logic after 10 seconds if not interacted
-    const timers = activeAlerts.map(alert => {
-      return setTimeout(() => {
-        setActiveAlerts(prev => prev.filter(a => a.id !== alert.id));
-      }, 10000); // 10 seconds
-    });
+    setActiveAlerts(alerts || []);
+  }, [alerts]);
+
+  useEffect(() => {
+    const timers = activeAlerts.map((alert) =>
+      setTimeout(() => {
+        setActiveAlerts((prev) => prev.filter((item) => item.id !== alert.id));
+      }, 10000),
+    );
 
     return () => {
-      timers.forEach(timer => clearTimeout(timer));
+      timers.forEach((timer) => clearTimeout(timer));
     };
   }, [activeAlerts]);
 
   const handleResolve = (id) => {
-    setActiveAlerts(prev => prev.filter(a => a.id !== id));
+    setActiveAlerts((prev) => prev.filter((alert) => alert.id !== id));
   };
 
   if (!activeAlerts || activeAlerts.length === 0) {
-    return null; // hide if no alerts
+    return null;
   }
 
   return (
     <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }}>
-      {activeAlerts.map(alert => {
+      {activeAlerts.map((alert) => {
         const { icon, color } = getAlertProps(alert.type);
         const timeString = new Date(alert.timestamp).toLocaleTimeString();
 
@@ -54,7 +63,12 @@ const HardwareAlertBanner = ({ alerts: initialAlerts }) => {
             showIcon
             icon={icon}
             action={
-              <Button size="small" type="primary" danger={color === 'error'} onClick={() => handleResolve(alert.id)}>
+              <Button
+                size="small"
+                type="primary"
+                danger={color === 'error'}
+                onClick={() => handleResolve(alert.id)}
+              >
                 Resolve
               </Button>
             }

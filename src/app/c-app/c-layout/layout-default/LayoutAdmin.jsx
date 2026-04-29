@@ -16,7 +16,7 @@ import {
 } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import axiosClient from '../../../c-lib/axios/axiosClient.service';
-import { CATEGORY_IOT_API } from '../../../c-lib/constants/auth-api.constant';
+import { CATEGORY_IOT_API } from '../../../c-lib/api/iot.api';
 
 export const LanguageContext = React.createContext('en');
 export const IotCategoryNavContext = React.createContext({

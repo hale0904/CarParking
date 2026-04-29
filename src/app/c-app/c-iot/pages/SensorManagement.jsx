@@ -1,6 +1,6 @@
 import React from 'react';
 import DeviceManagementContent from '../shared/DeviceManagementContent';
-import { SENSOR_API } from '../../../c-lib/constants/auth-api.constant';
+import { SENSOR_API } from '../../../c-lib/api/iot.api';
 
 const SensorManagement = () => (
   <DeviceManagementContent

@@ -17,7 +17,7 @@ const processQueue = (error, token = null) => {
 
 export const attachRefreshInterceptor = (axiosInstance) => {
   axiosInstance.interceptors.response.use(
-    (response) => response.data,
+    (response) => (response.config?._returnFullResponse ? response : response.data),
     async (error) => {
       const originalRequest = error.config;
 

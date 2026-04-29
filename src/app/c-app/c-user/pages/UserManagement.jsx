@@ -30,7 +30,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import axiosClient from '../../../c-lib/axios/axiosClient.service';
-import { USER_API } from '../../../c-lib/constants/auth-api.constant';
+import { USER_API } from '../../../c-lib/api/user.api';
 
 const { Title, Text } = Typography;
 
