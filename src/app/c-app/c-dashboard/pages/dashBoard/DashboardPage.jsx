@@ -49,8 +49,7 @@ import { useAdminI18n } from '../../../../c-lib/i18n/adminI18n';
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
-const DEFAULT_STATISTICAL_RANGE = [dayjs(), dayjs().add(2, 'hour')];
-const DEFAULT_TURNOVER_RANGE = [dayjs().startOf('month'), dayjs()];
+const DEFAULT_DATE_RANGE = [dayjs().startOf('month'), dayjs()];
 const DEFAULT_REVENUE_CUSTOM_RANGE = [dayjs().startOf('month'), dayjs()];
 const CURRENCY_FORMATTER = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
 
@@ -140,7 +139,6 @@ const parseLegacyLanesToGraph = (lanesApiData, apiNodes = []) => {
   const laneNodes = [];
   const laneEdges = [];
 
-  // Build _id → code map to resolve MongoDB ObjectId references
   const mongoIdToCode = {};
   apiNodes.forEach((n) => {
     laneNodes.push({ id: n.code, x: n.positionX, y: n.positionY });
@@ -165,7 +163,6 @@ const parseLegacyLanesToGraph = (lanesApiData, apiNodes = []) => {
         laneEdges.push({ id: l.code, fromNodeId, toNodeId, width: w });
       }
     } else {
-      // Fallback for legacy lanes without node references
       const TOLERANCE = 15;
       let prevNodeId = null;
       for (let j = 0; j < pts.length; j += 2) {
@@ -246,8 +243,7 @@ const DashboardPage = () => {
   const [revenueData, setRevenueData] = useState(null);
   const [zoneOptions, setZoneOptions] = useState([]);
   const [selectedZoneIds, setSelectedZoneIds] = useState([]);
-  const [statisticalRange, setStatisticalRange] = useState(DEFAULT_STATISTICAL_RANGE);
-  const [turnoverRange, setTurnoverRange] = useState(DEFAULT_TURNOVER_RANGE);
+  const [dateRange, setDateRange] = useState(DEFAULT_DATE_RANGE);
   const [revenueType, setRevenueType] = useState('month');
   const [revenueCustomRange, setRevenueCustomRange] = useState(DEFAULT_REVENUE_CUSTOM_RANGE);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -343,15 +339,105 @@ const DashboardPage = () => {
   }, []);
 
   useEffect(() => {
+    let intervalId;
+
+    const fetchMapSilently = async () => {
+      try {
+        const res = await axiosClient.post(PARKING_API.GET_LIST, {});
+        const list = res?.data || res;
+
+        if (!list || list.length === 0) return;
+
+        const item = list[0];
+
+        const mapped = {
+          metadata: { gridRealSize: 2.5, unit: 'm' },
+          parking: {
+            floors: (item.floors || []).map((floor) => ({
+              id: floor.code,
+              name: floor.nameFloor,
+              boundary: floor.boundary || { points: [], closed: false },
+              standaloneSlots: [],
+              ...parseLegacyLanesToGraph(floor.lanes || [], floor.laneNodes || []),
+              entrances: (floor.entrances || []).map((e) => ({
+                id: e.code,
+                x: e.positionX,
+                y: e.positionY,
+                width: e.witdh,
+                height: e.height,
+                rotation: e.rotation,
+              })),
+              exits: (floor.exits || []).map((e) => ({
+                id: e.code,
+                x: e.positionX,
+                y: e.positionY,
+                width: e.witdh,
+                height: e.height,
+                rotation: e.rotation,
+              })),
+              zones: (floor.zones || []).map((zone) => ({
+                id: zone.code,
+                name: zone.nameZone,
+                color: zone.color || '#3b82f6',
+                points: zone.points,
+                slotGroups: (zone.groupSlots || []).map((group) => ({
+                  id: group.code,
+                  x: group.positionX,
+                  y: group.positionY,
+                  width: group.width,
+                  height: group.height,
+                  rotation: group.rotation,
+                  direction: group.direction,
+                  slots: (group.slots || []).map((slot) => ({
+                    id: slot._id,
+                    code: slot.code,
+                    status:
+                      slot.status === 0
+                        ? 'available'
+                        : slot.status === 1
+                          ? 'occupied'
+                          : slot.status === 2
+                            ? 'reserved'
+                            : slot.status === 3
+                              ? 'inactive'
+                              : 'available',
+                    sensorId: slot.sensorId,
+                    sensorStatus: slot.sensorStatus,
+                  })),
+                })),
+              })),
+            })),
+          },
+        };
+
+        // ⚠️ tránh re-render nếu data giống nhau (optional optimize)
+        setMapData((prev) => {
+          if (!prev) return mapped;
+          return JSON.stringify(prev) === JSON.stringify(mapped) ? prev : mapped;
+        });
+      } catch (err) {
+        console.error('Polling map error:', err);
+      }
+    };
+
+    // chạy mỗi 2 giây
+    intervalId = setInterval(fetchMapSilently, 2000);
+
+    return () => {
+      clearInterval(intervalId); // cleanup
+    };
+  }, []);
+
+  useEffect(() => {
     const fetchStatistical = async () => {
-      if (!statisticalRange || statisticalRange.length !== 2) return;
+      if (!dateRange || dateRange.length !== 2) return;
 
       setStatsLoading(true);
       try {
         const res = await axiosClient.post(STATISTICAL_API.GET_STATISTICAL, {
-          expectedArrivalTime: statisticalRange[0].toISOString(),
-          expectedLeaveTime: statisticalRange[1].toISOString(),
-          zoneIDs: selectedZoneIds,
+          expectedArrivalTime: dateRange[0].toISOString(),
+          expectedLeaveTime: dateRange[1].toISOString(),
+          zoneIds: selectedZoneIds,
         });
 
         const zones = res?.data || [];
@@ -369,8 +455,6 @@ const DashboardPage = () => {
         setStatsData({
           ...aggregated,
           zoneCount: zones.length,
-          averageEmptyPercent: zones.length ? aggregated.percentEmptySum / zones.length : 0,
-          averageUsedPercent: zones.length ? aggregated.percentUsedSum / zones.length : 0,
           zones,
         });
       } catch (err) {
@@ -383,18 +467,18 @@ const DashboardPage = () => {
     };
 
     fetchStatistical();
-  }, [selectedZoneIds, statisticalRange]);
+  }, [selectedZoneIds, dateRange]);
 
   useEffect(() => {
     const fetchTurnover = async () => {
-      if (!turnoverRange || turnoverRange.length !== 2) return;
+      if (!dateRange || dateRange.length !== 2) return;
 
       setTurnoverLoading(true);
       try {
         const res = await axiosClient.post(TURNOVER_API.GET_TURNOVER, {
-          startDate: turnoverRange[0].format('YYYY-MM-DD'),
-          endDate: turnoverRange[1].format('YYYY-MM-DD'),
-          zoneIDs: selectedZoneIds,
+          startDate: dateRange[0].format('YYYY-MM-DD'),
+          endDate: dateRange[1].format('YYYY-MM-DD'),
+          zoneIds: selectedZoneIds,
         });
         setTurnoverData(res?.data || null);
       } catch (err) {
@@ -407,7 +491,7 @@ const DashboardPage = () => {
     };
 
     fetchTurnover();
-  }, [selectedZoneIds, turnoverRange]);
+  }, [selectedZoneIds, dateRange]);
 
   useEffect(() => {
     const fetchRevenue = async () => {
@@ -425,7 +509,9 @@ const DashboardPage = () => {
         const res = await axiosClient.post(REVENUE_API.GET_REVENUE, payload);
         setRevenueData(res?.data || null);
       } catch (err) {
-        message.error(err?.response?.data?.message || err.message || t('dashboard.failedToLoadRevenueData'));
+        message.error(
+          err?.response?.data?.message || err.message || t('dashboard.failedToLoadRevenueData'),
+        );
       } finally {
         setRevenueLoading(false);
       }
@@ -496,25 +582,9 @@ const DashboardPage = () => {
   ];
 
   const totalDisplay = statsData?.totalSlots ?? allSlotsGlobal.length;
-  const selectedZoneLabel =
-    selectedZoneIds.length > 0
-      ? t('dashboard.selectedZones', { count: selectedZoneIds.length })
-      : t('common.allZones');
   const turnoverPercent =
     typeof turnoverData?.turnover === 'number' ? turnoverData.turnover * 100 : 0;
-  const zoneStatsPreview = useMemo(() => (statsData?.zones || []).slice(0, 4), [statsData]);
-  const occupancyChartData = useMemo(
-    () =>
-      (statsData?.zones || []).map((zone, index) => ({
-        name:
-          zoneOptions.find((item) => item.value === zone.zoneId)?.label ||
-          zone.zoneName ||
-          `Zone ${index + 1}`,
-        available: safeNumber(zone.empty),
-        occupied: safeNumber(zone.used),
-      })),
-    [statsData, zoneOptions],
-  );
+
   const revenueSeriesData = useMemo(() => {
     const root = revenueData?.data || revenueData || {};
     const points = Array.isArray(root)
@@ -535,6 +605,7 @@ const DashboardPage = () => {
       },
     ];
   }, [revenueData, revenueType]);
+
   const turnoverSeriesData = useMemo(() => {
     const root = turnoverData?.data || turnoverData || {};
     const points = Array.isArray(root)
@@ -559,7 +630,7 @@ const DashboardPage = () => {
   const handleExportReport = async (format) => {
     const config = EXPORT_FORMAT_CONFIG[format];
     if (!config) return;
-    if (!statisticalRange || statisticalRange.length !== 2) {
+    if (!dateRange || dateRange.length !== 2) {
       message.warning(t('dashboard.invalidStatisticalRange'));
       return;
     }
@@ -577,8 +648,8 @@ const DashboardPage = () => {
       const response = await axiosClient.post(
         EXPORT_API.EXPORT_REPORT,
         {
-          expectedArrivalTime: statisticalRange[0].format('YYYY-MM-DDTHH:mm:ss'),
-          expectedLeaveTime: statisticalRange[1].format('YYYY-MM-DDTHH:mm:ss'),
+          expectedArrivalTime: dateRange[0].format('YYYY-MM-DDTHH:mm:ss'),
+          expectedLeaveTime: dateRange[1].format('YYYY-MM-DDTHH:mm:ss'),
           zoneIds: selectedZoneIds,
           format,
         },
@@ -604,7 +675,9 @@ const DashboardPage = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      message.success(format === 'pdf' ? t('dashboard.exportedParkingPdf') : t('dashboard.exportedParkingExcel'));
+      message.success(
+        format === 'pdf' ? t('dashboard.exportedParkingPdf') : t('dashboard.exportedParkingExcel'),
+      );
     } catch (err) {
       const errorMessage = await parseBlobErrorMessage(err);
       message.error(translateExportErrorMessage(errorMessage));
@@ -619,6 +692,11 @@ const DashboardPage = () => {
       return;
     }
 
+    const selectedZoneLabel =
+      selectedZoneIds.length > 0
+        ? t('dashboard.selectedZones', { count: selectedZoneIds.length })
+        : t('common.allZones');
+
     const summaryRows = [
       ['Section', 'Metric', 'Value'],
       ['General', 'Selected Zones', selectedZoneLabel],
@@ -630,13 +708,6 @@ const DashboardPage = () => {
       ['Turnover', 'Turnover Rate (%)', Number.isFinite(turnoverPercent) ? turnoverPercent : 0],
       ['Revenue', 'Total Revenue', safeNumber(revenueData?.totalRevenue)],
       ['Revenue', 'Total Sessions', safeNumber(revenueData?.totalSessions)],
-    ];
-
-    const occupancyRows = [
-      [],
-      ['Occupancy by Zone'],
-      ['Zone', 'Available', 'Occupied'],
-      ...occupancyChartData.map((row) => [row.name, row.available, row.occupied]),
     ];
 
     const revenueRows = [
@@ -653,7 +724,7 @@ const DashboardPage = () => {
       ...turnoverSeriesData.map((row) => [row.name, row.sessions, row.turnoverRate]),
     ];
 
-    const csvContent = [...summaryRows, ...occupancyRows, ...revenueRows, ...turnoverRows]
+    const csvContent = [...summaryRows, ...revenueRows, ...turnoverRows]
       .map((row) => row.map(escapeCsvCell).join(','))
       .join('\n');
 
@@ -674,6 +745,7 @@ const DashboardPage = () => {
       <div style={{ padding: 24, background: '#f0f2f5', minHeight: '100vh' }}>
         <Title level={4}>{t('dashboard.title')}</Title>
 
+        {/* Filter Card */}
         <Card style={{ marginBottom: 16, borderRadius: 10 }} bordered={false}>
           <Row gutter={[16, 16]} align="middle">
             <Col xs={24} md={8}>
@@ -689,36 +761,21 @@ const DashboardPage = () => {
                   style={{ width: '100%' }}
                   maxTagCount="responsive"
                 />
-                <Text type="secondary">{selectedZoneLabel}</Text>
               </Space>
             </Col>
-            <Col xs={24} md={8}>
+            <Col xs={24} md={12}>
               <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                <Text strong>{t('dashboard.statisticalWindow')}</Text>
+                <Text strong>{t('Data range')}</Text>
                 <RangePicker
-                  showTime
-                  value={statisticalRange}
-                  onChange={(value) => value && setStatisticalRange(value)}
-                  style={{ width: '100%' }}
-                />
-              </Space>
-            </Col>
-            <Col xs={24} md={8}>
-              <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                <Text strong>{t('dashboard.turnoverRange')}</Text>
-                <RangePicker
-                  value={turnoverRange}
-                  onChange={(value) => value && setTurnoverRange(value)}
+                  value={dateRange}
+                  onChange={(value) => value && setDateRange(value)}
                   style={{ width: '100%' }}
                 />
               </Space>
             </Col>
             <Col span={24}>
               <Space size={8}>
-                <Button
-                  icon={<FileExcelOutlined />}
-                  onClick={handleExportCsv}
-                >
+                <Button icon={<FileExcelOutlined />} onClick={handleExportCsv}>
                   {t('dashboard.exportCsv')}
                 </Button>
                 <Button
@@ -734,10 +791,16 @@ const DashboardPage = () => {
           </Row>
         </Card>
 
+        {/* 3 Cards — equal width, side by side */}
         <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          <Col xs={24} xl={10}>
+          {/* Card 1: Status Overview */}
+          <Col xs={24} xl={8}>
             <Card
-              title={<span style={{ color: 'white', fontSize: 14 }}>{t('dashboard.statusOverview')}</span>}
+              title={
+                <span style={{ color: 'white', fontSize: 14 }}>
+                  {t('dashboard.statusOverview')}
+                </span>
+              }
               style={{
                 background: '#1a1a2e',
                 borderRadius: 10,
@@ -785,7 +848,9 @@ const DashboardPage = () => {
                       >
                         {totalDisplay}
                       </div>
-                      <div style={{ fontSize: 12, color: '#d9d9d9' }}>{t('dashboard.totalSlot')}</div>
+                      <div style={{ fontSize: 12, color: '#d9d9d9' }}>
+                        {t('dashboard.totalSlot')}
+                      </div>
                     </div>
                   </div>
 
@@ -818,20 +883,6 @@ const DashboardPage = () => {
                     ))}
                   </div>
                   <Divider style={{ borderColor: '#333', margin: '16px 0' }} />
-                  <Row gutter={[12, 12]} style={{ width: '100%' }}>
-                    <Col span={12}>
-                      <Text style={{ color: '#d9d9d9' }}>{t('dashboard.avgEmpty')}</Text>
-                      <div style={{ color: 'white', fontSize: 20, fontWeight: 600 }}>
-                        {(statsData?.averageEmptyPercent || 0).toFixed(1)}%
-                      </div>
-                    </Col>
-                    <Col span={12}>
-                      <Text style={{ color: '#d9d9d9' }}>{t('dashboard.avgUsed')}</Text>
-                      <div style={{ color: 'white', fontSize: 20, fontWeight: 600 }}>
-                        {(statsData?.averageUsedPercent || 0).toFixed(1)}%
-                      </div>
-                    </Col>
-                  </Row>
                 </div>
               </Spin>
 
@@ -841,165 +892,112 @@ const DashboardPage = () => {
             </Card>
           </Col>
 
-          <Col xs={24} xl={14}>
-            <Row gutter={[16, 16]}>
-              <Col xs={24} md={12}>
-                <Card
-                  title={t('dashboard.turnover')}
-                  style={{ borderRadius: 10, height: '100%' }}
-                  bordered={false}
-                  extra={
-                    <Button type="text" size="small">
-                      {selectedZoneLabel}
-                    </Button>
-                  }
-                >
-                  <Spin spinning={turnoverLoading}>
-                    <div style={{ marginBottom: 8 }}>
-                      <Text type="secondary">
-                        {t('dashboard.overallTurnover', {
-                          value: (Number.isFinite(turnoverPercent) ? turnoverPercent : 0).toFixed(2),
-                        })}
-                      </Text>
-                    </div>
-                    <div style={{ width: '100%', height: 220 }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={turnoverSeriesData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="name" />
-                          <YAxis yAxisId="left" />
-                          <YAxis yAxisId="right" orientation="right" />
-                          <Tooltip />
-                          <Legend />
-                          <Bar yAxisId="left" dataKey="sessions" fill="#1677ff" name={t('dashboard.sessions')} />
-                          <Bar
-                            yAxisId="right"
-                            dataKey="turnoverRate"
-                            fill="#52c41a"
-                            name={t('dashboard.turnoverRate')}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </Spin>
-                </Card>
-              </Col>
-              <Col xs={24} md={12}>
-                <Card
-                  title={t('dashboard.revenue')}
-                  style={{ borderRadius: 10, height: '100%' }}
-                  bordered={false}
-                  extra={
-                    <Select
-                      value={revenueType}
-                      onChange={setRevenueType}
-                      options={[
-                        { label: t('dashboard.today'), value: 'day' },
-                        { label: t('dashboard.thisMonth'), value: 'month' },
-                        { label: t('dashboard.custom'), value: 'custom' },
-                      ]}
-                      style={{ width: 130 }}
+          {/* Card 2: Turnover */}
+          <Col xs={24} xl={8}>
+            <Card
+              title={t('dashboard.turnover')}
+              style={{ borderRadius: 10, height: '100%' }}
+              bordered={false}
+            >
+              <Spin spinning={turnoverLoading}>
+                <div style={{ marginBottom: 8 }}>
+                  <Text type="secondary">
+                    {t('dashboard.overallTurnover', {
+                      value: (Number.isFinite(turnoverPercent) ? turnoverPercent : 0).toFixed(2),
+                    })}
+                  </Text>
+                </div>
+                <div style={{ width: '100%', height: 280 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={turnoverSeriesData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis yAxisId="left" />
+                      <YAxis yAxisId="right" orientation="right" />
+                      <Tooltip />
+                      <Legend />
+                      <Bar
+                        yAxisId="left"
+                        dataKey="sessions"
+                        fill="#1677ff"
+                        name={t('dashboard.sessions')}
+                      />
+                      <Bar
+                        yAxisId="right"
+                        dataKey="turnoverRate"
+                        fill="#52c41a"
+                        name={t('dashboard.turnoverRate')}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </Spin>
+            </Card>
+          </Col>
+
+          {/* Card 3: Revenue */}
+          <Col xs={24} xl={8}>
+            <Card
+              title={t('dashboard.revenue')}
+              style={{ borderRadius: 10, height: '100%' }}
+              bordered={false}
+              extra={
+                <Select
+                  value={revenueType}
+                  onChange={setRevenueType}
+                  options={[
+                    { label: t('dashboard.today'), value: 'day' },
+                    { label: t('dashboard.thisMonth'), value: 'month' },
+                    { label: t('dashboard.custom'), value: 'custom' },
+                  ]}
+                  style={{ width: 130 }}
+                />
+              }
+            >
+              <Spin spinning={revenueLoading}>
+                <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                  {revenueType === 'custom' && (
+                    <RangePicker
+                      value={revenueCustomRange}
+                      onChange={(value) => value && setRevenueCustomRange(value)}
+                      style={{ width: '100%' }}
                     />
-                  }
-                >
-                  <Spin spinning={revenueLoading}>
-                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                      {revenueType === 'custom' && (
-                        <RangePicker
-                          value={revenueCustomRange}
-                          onChange={(value) => value && setRevenueCustomRange(value)}
-                          style={{ width: '100%' }}
-                        />
-                      )}
-                      <Text strong>{t('dashboard.totalRevenue', { value: formatCurrency(revenueData?.totalRevenue || 0) })}</Text>
-                      <div style={{ width: '100%', height: 220 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={revenueSeriesData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" />
-                            <YAxis />
-                            <Tooltip
-                              formatter={(value, key) =>
-                                key === 'revenue' ? formatCurrency(value) : safeNumber(value)
-                              }
-                            />
-                            <Legend />
-                            <Line
-                              type="monotone"
-                              dataKey="revenue"
-                              stroke="#722ed1"
-                              strokeWidth={2}
-                              dot={{ r: 3 }}
-                              name={t('dashboard.revenue')}
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </Space>
-                  </Spin>
-                </Card>
-              </Col>
-              <Col span={24}>
-                <Card title={t('dashboard.occupancyByZone')} style={{ borderRadius: 10 }} bordered={false}>
+                  )}
+                  <Text strong>
+                    {t('dashboard.totalRevenue', {
+                      value: formatCurrency(revenueData?.totalRevenue || 0),
+                    })}
+                  </Text>
                   <div style={{ width: '100%', height: 280 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={occupancyChartData}>
+                      <LineChart data={revenueSeriesData}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="name" />
                         <YAxis />
-                        <Tooltip />
+                        <Tooltip
+                          formatter={(value, key) =>
+                            key === 'revenue' ? formatCurrency(value) : safeNumber(value)
+                          }
+                        />
                         <Legend />
-                        <Bar dataKey="available" fill="#52c41a" name={t('dashboard.available')} />
-                        <Bar dataKey="occupied" fill="#595959" name={t('dashboard.occupied')} />
-                      </BarChart>
+                        <Line
+                          type="monotone"
+                          dataKey="revenue"
+                          stroke="#722ed1"
+                          strokeWidth={2}
+                          dot={{ r: 3 }}
+                          name={t('dashboard.revenue')}
+                        />
+                      </LineChart>
                     </ResponsiveContainer>
                   </div>
-                </Card>
-              </Col>
-              <Col span={24}>
-                <Card title={t('dashboard.zoneCapacitySnapshot')} style={{ borderRadius: 10 }} bordered={false}>
-                  <Row gutter={[12, 12]}>
-                    {zoneStatsPreview.length > 0 ? (
-                      zoneStatsPreview.map((zone) => (
-                        <Col xs={24} md={12} key={zone.zoneId}>
-                          <div
-                            style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 12 }}
-                          >
-                            <Text strong>
-                              {zoneOptions.find((item) => item.value === zone.zoneId)?.label ||
-                                zone.zoneId}
-                            </Text>
-                            <div style={{ marginTop: 8 }}>
-                              <Text>{t('dashboard.totalSlots')}: {zone.totalSlots || 0}</Text>
-                            </div>
-                            <div>
-                              <Text>
-                                {t('dashboard.available')}: {zone.empty || 0} ({(zone.percentEmpty || 0).toFixed(1)}%)
-                              </Text>
-                            </div>
-                            <div>
-                              <Text>
-                                {t('dashboard.occupied')}: {zone.used || 0} ({(zone.percentUsed || 0).toFixed(1)}%)
-                              </Text>
-                            </div>
-                          </div>
-                        </Col>
-                      ))
-                    ) : (
-                      <Col span={24}>
-                        <Empty
-                          image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description={t('dashboard.noStatsForFilters')}
-                        />
-                      </Col>
-                    )}
-                  </Row>
-                </Card>
-              </Col>
-            </Row>
+                </Space>
+              </Spin>
+            </Card>
           </Col>
         </Row>
 
+        {/* Parking Map */}
         <Title level={4}>{t('dashboard.parkingMap')}</Title>
         <Divider style={{ marginTop: 0, marginBottom: 16 }} />
 
@@ -1066,7 +1064,8 @@ const DashboardPage = () => {
                       {floor.zones.map((zone) => (
                         <Tag key={zone.id} color={zone.color} style={{ marginBottom: 8 }}>
                           {zone.name}:{' '}
-                          {(zone.slotGroups || []).flatMap((g) => g.slots || []).length} {t('dashboard.slotsSuffix')}
+                          {(zone.slotGroups || []).flatMap((g) => g.slots || []).length}{' '}
+                          {t('dashboard.slotsSuffix')}
                         </Tag>
                       ))}
                       <div

@@ -31,8 +31,8 @@ const collectPoints = (items = []) =>
   items.flatMap((item) => {
     if (!item) return [];
     if (Array.isArray(item.points)) return item.points;
-    const numericValues = [item.x, item.y, item.positionX, item.positionY].filter(
-      (value) => Number.isFinite(value),
+    const numericValues = [item.x, item.y, item.positionX, item.positionY].filter((value) =>
+      Number.isFinite(value),
     );
     return numericValues.length >= 2 ? numericValues.slice(0, 2) : [];
   });
@@ -120,7 +120,9 @@ const EditorCanvas = ({
   gridRealSize = 2.5,
   parkingUnit = 'm',
   readOnly = false,
+  interactionLocked = false,
 }) => {
+  const canEdit = !readOnly && !interactionLocked;
   const stageRef = useRef(null);
   const viewportRef = useRef(null);
   const transformerRef = useRef(null);
@@ -143,7 +145,7 @@ const EditorCanvas = ({
   useEffect(() => {
     if (!transformerRef.current || !stageRef.current) return;
 
-    if (!selectedEntity) {
+    if (!selectedEntity || !canEdit) {
       transformerRef.current.nodes([]);
       return;
     }
@@ -170,7 +172,7 @@ const EditorCanvas = ({
     }
 
     transformerRef.current.getLayer()?.batchDraw();
-  }, [selectedEntity, zones, standaloneSlots, laneNodes, laneEdges, entrances, exits]);
+  }, [selectedEntity, zones, standaloneSlots, laneNodes, laneEdges, entrances, exits, canEdit]);
 
   useEffect(() => {
     updateHUD();
@@ -246,10 +248,21 @@ const EditorCanvas = ({
     setScale((prevScale) => (Math.abs(prevScale - nextScale) > 0.001 ? nextScale : prevScale));
     stage.position(nextPosition);
     updateHUD();
-  }, [readOnly, boundary, zones, standaloneSlots, laneNodes, entrances, exits, setScale, stageSize]);
+  }, [
+    readOnly,
+    boundary,
+    zones,
+    standaloneSlots,
+    laneNodes,
+    entrances,
+    exits,
+    setScale,
+    stageSize,
+  ]);
 
   const handleWheel = (e) => {
     e.evt.preventDefault();
+    if (interactionLocked) return;
     const stage = stageRef.current;
     const oldScale = stage.scaleX();
 
@@ -286,6 +299,7 @@ const EditorCanvas = ({
 
   const handleDrop = (e) => {
     e.preventDefault();
+    if (!canEdit) return;
     const stage = stageRef.current;
     stage.setPointersPositions(e);
     const pointer = stage.getPointerPosition();
@@ -320,9 +334,9 @@ const EditorCanvas = ({
         id={slot.id}
         x={x}
         y={y}
-        draggable={!readOnly && !isGrouped && editorMode !== 'PAN'} // Only standalone are draggable, and not in PAN mode
+        draggable={canEdit && !isGrouped && editorMode !== 'PAN'} // Only standalone are draggable, and not in PAN mode
         onDragEnd={
-          !readOnly && !isGrouped
+          canEdit && !isGrouped
             ? (e) => {
                 const nx = Math.round(e.target.x() / GRID_SIZE) * GRID_SIZE;
                 const ny = Math.round(e.target.y() / GRID_SIZE) * GRID_SIZE;
@@ -333,7 +347,7 @@ const EditorCanvas = ({
             : undefined
         }
         onClick={(e) => {
-          if (readOnly) return;
+          if (!canEdit) return;
           if (editorMode === 'PAN') return;
           e.cancelBubble = true;
           if (isGrouped) {
@@ -400,9 +414,9 @@ const EditorCanvas = ({
         x={group.x}
         y={group.y}
         rotation={group.rotation || 0}
-        draggable={!readOnly && editorMode !== 'PAN'}
+        draggable={canEdit && editorMode !== 'PAN'}
         onDragEnd={(e) => {
-          if (readOnly) return;
+          if (!canEdit) return;
           const x = Math.round(e.target.x() / GRID_SIZE) * GRID_SIZE;
           const y = Math.round(e.target.y() / GRID_SIZE) * GRID_SIZE;
           e.target.x(x);
@@ -410,7 +424,7 @@ const EditorCanvas = ({
           onUpdateSlotGroup(parentZoneId, group.id, { x, y });
         }}
         onTransformEnd={(e) => {
-          if (readOnly) return;
+          if (!canEdit) return;
           const node = e.target;
           const newWidth = group.width * node.scaleX();
           const newHeight = group.height * node.scaleY();
@@ -426,7 +440,7 @@ const EditorCanvas = ({
           });
         }}
         onClick={(e) => {
-          if (readOnly) return;
+          if (!canEdit) return;
           if (editorMode === 'PAN') return;
           e.cancelBubble = true;
           onSelect({ type: 'SLOT_GROUP', id: group.id, parentId: parentZoneId });
@@ -466,9 +480,9 @@ const EditorCanvas = ({
         x={gate.x}
         y={gate.y}
         rotation={gate.rotation || 0}
-        draggable={!readOnly && editorMode !== 'PAN'}
+        draggable={canEdit && editorMode !== 'PAN'}
         onDragEnd={(e) => {
-          if (readOnly) return;
+          if (!canEdit) return;
           const x = Math.round(e.target.x() / GRID_SIZE) * GRID_SIZE;
           const y = Math.round(e.target.y() / GRID_SIZE) * GRID_SIZE;
           e.target.x(x);
@@ -479,7 +493,7 @@ const EditorCanvas = ({
             : onUpdateExit(gate.id, { x, y });
         }}
         onTransformEnd={(e) => {
-          if (readOnly) return;
+          if (!canEdit) return;
           const node = e.target;
           const newWidth = Math.round(gate.width * node.scaleX());
           node.scaleX(1);
@@ -496,7 +510,7 @@ const EditorCanvas = ({
           type === 'ENTRANCE' ? onUpdateEntrance(gate.id, update) : onUpdateExit(gate.id, update);
         }}
         onClick={(e) => {
-          if (readOnly) return;
+          if (!canEdit) return;
           if (editorMode === 'PAN') return;
           e.cancelBubble = true;
           onSelect({ type, id: gate.id });
@@ -597,13 +611,20 @@ const EditorCanvas = ({
           ref={stageRef}
           {...(!readOnly ? { x: stagePos.x, y: stagePos.y } : {})}
           onDragEnd={() => {
-            if (readOnly || editorMode !== 'PAN' || !onStagePosChange || !stageRef.current) return;
+            if (
+              readOnly ||
+              interactionLocked ||
+              editorMode !== 'PAN' ||
+              !onStagePosChange ||
+              !stageRef.current
+            )
+              return;
             const st = stageRef.current;
             onStagePosChange({ x: st.x(), y: st.y() });
           }}
           onMouseDown={(e) => {
             const stage = stageRef.current;
-            if (readOnly || editorMode === 'PAN') return; // Allow dragging logic from Stage prop
+            if (!canEdit || editorMode === 'PAN') return; // Allow dragging logic from Stage prop
 
             if (e.target !== stage) {
               return;
@@ -687,6 +708,7 @@ const EditorCanvas = ({
             }
           }}
           onMouseMove={(e) => {
+            if (!canEdit) return;
             if (editorMode === 'DRAW_LANE') {
               const stage = e.target.getStage();
               const pos = stage.getPointerPosition();
@@ -697,7 +719,7 @@ const EditorCanvas = ({
           }}
           onWheel={handleWheel}
           onDragMove={handleDragMove}
-          draggable={editorMode === 'PAN'}
+          draggable={editorMode === 'PAN' && canEdit}
           style={{
             cursor:
               editorMode === 'PAN'
@@ -716,6 +738,7 @@ const EditorCanvas = ({
               scale={scale}
               gridRealSize={gridRealSize}
               parkingUnit={parkingUnit}
+              allowVertexDrag={canEdit}
               onDragVertex={(index, x, y) => {
                 const newPoints = [...boundary.points];
                 newPoints[index * 2] = x;
@@ -738,6 +761,7 @@ const EditorCanvas = ({
               scale={scale}
               gridRealSize={gridRealSize}
               parkingUnit={parkingUnit}
+              readOnly={!canEdit}
               onVertexClick={(index) => {
                 if (editorMode === 'DRAW_ZONE' && index === 0 && draftZone.points.length >= 6) {
                   onFinishZone();
@@ -759,7 +783,7 @@ const EditorCanvas = ({
                     scale={scale}
                     gridRealSize={gridRealSize}
                     parkingUnit={parkingUnit}
-                    readOnly={readOnly}
+                    readOnly={!canEdit}
                     onDragVertex={(index, x, y) => {
                       if (boundary.closed && !pointInPolygon({ x, y }, boundary.points)) {
                         alert('Vertex must remain inside boundary.');
@@ -772,7 +796,7 @@ const EditorCanvas = ({
                       onUpdateZone(zone.id, { points: newPoints });
                     }}
                     onDragEnd={(e) => {
-                      if (readOnly) return;
+                      if (!canEdit) return;
                       if (editorMode === 'PAN') return;
                       const node = e.target;
 
@@ -800,7 +824,7 @@ const EditorCanvas = ({
                       onUpdateZone(zone.id, { points: newPoints, slotGroups: updatedGroups });
                     }}
                     onClick={() => {
-                      if (readOnly) return;
+                      if (!canEdit) return;
                       if (editorMode !== 'PAN') onSelect({ type: 'ZONE', id: zone.id });
                     }}
                   />
@@ -869,7 +893,7 @@ const EditorCanvas = ({
               drawingEdge={drawingEdge}
               setDrawingEdge={setDrawingEdge}
               pointerPos={pointerPos}
-              readOnly={readOnly}
+              readOnly={!canEdit}
             />
 
             {entrances && entrances.map((ent) => renderGate(ent, 'ENTRANCE'))}

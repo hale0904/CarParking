@@ -26,6 +26,7 @@ const EditorTopBar = ({ parkingName = "New Parking Map", onSave, onCancel, isSav
                     type="text"
                     icon={<ArrowLeftOutlined />}
                     onClick={handleBack}
+                    disabled={isSaving}
                 >
                     Back
                 </Button>

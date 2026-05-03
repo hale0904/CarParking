@@ -200,8 +200,10 @@ const ParkingMapEditor = () => {
   const [scale, setScale] = useState(0.29);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
 
-  const fetchMapData = async () => {
-    setIsLoadingMap(true);
+  const fetchMapData = async (opts = {}) => {
+    const showPageLoader = opts.showPageLoader !== false;
+    const refitView = opts.refitView !== false;
+    if (showPageLoader) setIsLoadingMap(true);
     let floorsToFit = null;
     try {
       let normalizedSensors = [];
@@ -270,37 +272,38 @@ const ParkingMapEditor = () => {
                 slots:
                   group.slots && group.slots.length > 0
                     ? group.slots.map((slot) => ({
-                      id: slot.code,
-                      code: slot.code,
-                      nameSlot: slot.nameSlot || slot.code || '',
-                      mongoId: slot._id || null,
-                      status:
-                        slot.status === 0
-                          ? 'available' // xanh
-                          : slot.status === 1
-                            ? 'occupied' // đỏ
-                            : slot.status === 2
-                              ? 'reserved' // vàng
-                              : slot.status === 3
-                                ? 'inactive' // xám
-                                : 'available',
-                      sensorCode:
-                        normalizedSensors.find((s) => s._id === slot.sensorId)?.code || null,
-                      sensorId: slot.sensorId || null,
-                      sensorStatus:
-                        slot.sensorStatus !== undefined
-                          ? slot.sensorStatus
-                            ? 'online'
-                            : 'offline'
-                          : null,
-                    }))
+                        id: slot.code,
+                        code: slot.code,
+                        nameSlot: slot.nameSlot || slot.code || '',
+                        mongoId: slot._id || null,
+                        status:
+                          slot.status === 0
+                            ? 'available' // xanh
+                            : slot.status === 1
+                              ? 'occupied' // đỏ
+                              : slot.status === 2
+                                ? 'reserved' // vàng
+                                : slot.status === 3
+                                  ? 'inactive' // xám
+                                  : 'available',
+                        dbStatus: slot.status === 3 ? 'inactive' : 'active', // ← Lưu status thật từ DB
+                        sensorCode:
+                          normalizedSensors.find((s) => s._id === slot.sensorId)?.code || null,
+                        sensorId: slot.sensorId || null,
+                        sensorStatus:
+                          slot.sensorStatus !== undefined
+                            ? slot.sensorStatus
+                              ? 'online'
+                              : 'offline'
+                            : null,
+                      }))
                     : Array.from({ length: group.availableSlots || 0 }).map((_, i) => ({
-                      id: `${zone.code}-${group.code}-S${i + 1}`,
-                      code: `S${i + 1}`,
-                      status: 'available',
-                      sensorId: null,
-                      sensorStatus: null,
-                    })),
+                        id: `${zone.code}-${group.code}-S${i + 1}`,
+                        code: `S${i + 1}`,
+                        status: 'available',
+                        sensorId: null,
+                        sensorStatus: null,
+                      })),
               })),
             })),
           }));
@@ -313,8 +316,8 @@ const ParkingMapEditor = () => {
     } catch (err) {
       console.error('Failed to load map on mount:', err);
     } finally {
-      setIsLoadingMap(false);
-      if (floorsToFit?.length) {
+      if (showPageLoader) setIsLoadingMap(false);
+      if (floorsToFit?.length && refitView) {
         const snapshot = floorsToFit;
         queueMicrotask(() => {
           requestAnimationFrame(() => {
@@ -339,6 +342,10 @@ const ParkingMapEditor = () => {
   }, []);
 
   React.useEffect(() => {
+    if (isSaving) setIsFloorModalVisible(false);
+  }, [isSaving]);
+
+  React.useEffect(() => {
     socket.on('sensor_update', (data) => {
       const { sensorId, status, sensorStatus } = data;
 
@@ -348,15 +355,15 @@ const ParkingMapEditor = () => {
           standaloneSlots: floor.standaloneSlots.map((slot) =>
             slot.sensorId && slot.sensorId === sensorId
               ? {
-                ...slot,
-                status:
-                  slot.status === 'reserved' || slot.status === 'inactive'
-                    ? slot.status
-                    : sensorStatus
-                      ? 'occupied'
-                      : 'available',
-                sensorStatus: sensorStatus ? 'online' : 'offline',
-              }
+                  ...slot,
+                  status:
+                    slot.status === 'reserved' || slot.status === 'inactive'
+                      ? slot.status
+                      : sensorStatus
+                        ? 'occupied'
+                        : 'available',
+                  sensorStatus: sensorStatus ? 'online' : 'offline',
+                }
               : slot,
           ),
           zones: floor.zones.map((zone) => ({
@@ -366,15 +373,15 @@ const ParkingMapEditor = () => {
               slots: group.slots.map((slot) =>
                 slot.sensorId && slot.sensorId === sensorId
                   ? {
-                    ...slot,
-                    status:
-                      slot.status === 'reserved' || slot.status === 'inactive'
-                        ? slot.status
-                        : sensorStatus
-                          ? 'occupied'
-                          : 'available',
-                    sensorStatus: sensorStatus ? 'online' : 'offline',
-                  }
+                      ...slot,
+                      status:
+                        slot.status === 'reserved' || slot.status === 'inactive'
+                          ? slot.status
+                          : sensorStatus
+                            ? 'occupied'
+                            : 'available',
+                      sensorStatus: sensorStatus ? 'online' : 'offline',
+                    }
                   : slot,
               ),
             })),
@@ -937,155 +944,158 @@ const ParkingMapEditor = () => {
       content: 'Are you sure you want to save the parking map?',
       okText: 'Save',
       cancelText: 'Cancel',
-      onOk: async () => {
+      // Do not return a Promise from onOk so the confirm modal closes immediately (avoids stacked with isSaving / full-page loader).
+      onOk: () => {
         setIsSaving(true);
-        const hideLoading = message.loading('Saving...', 0);
 
-        try {
-          const requestBody = {
-            code: parkingCode,
-            name: parkingName,
-            location: parkingLocation,
-            status: parkingStatus || 1,
-            totalFloors: floors.length,
-            floors: floors.map((floor, fi) => ({
-              code: floor.id?.startsWith('floor-') ? `F${String(fi + 1).padStart(3, '0')}` : floor.id,
-              nameFloor: floor.name,
-              parkingCode: parkingCode,
-              status: floor.status ?? 0,
-              level: floor.level,
-              boundary: {
-                points: floor.boundary.points,
-                closed: floor.boundary.closed,
-              },
-              zones: floor.zones.map((zone, zi) => ({
-                code: zone.id || `Z${String(zi + 1).padStart(3, '0')}`,
-                nameZone: zone.name,
-                status: zone.status ?? 0,
-                color: zone.color || '#3b82f6',
-                points: zone.points,
-                groupSlots: (zone.slotGroups || []).map((group, gi) => ({
-                  code: group.code || `${zone.id}-GS${gi + 1}`,
-                  nameGroupSlot: group.name || `Row ${gi + 1}`,
-                  status: group.status ?? 0,
-                  color: group.color || zone.color || '#3b82f6',
-                  positionX: group.x,
-                  positionY: group.y,
-                  rotation: group.rotation ?? 0,
-                  direction: group.direction,
-                  width: group.width,
-                  height: group.height,
-                  availableSlots: group.slots.filter((s) => s.status === 'available').length,
-                  occupiedSlots: group.slots.filter((s) => s.status === 'occupied').length,
-                  reservedSlots: group.slots.filter((s) => s.status === 'reserved').length,
-                  slots: group.slots.map((slot, si) => ({
-                    code: slot.code || `${zone.id}-GS${gi + 1}-S${si + 1}`,
-                    nameSlot: slot.code || `${zone.id}-GS${gi + 1}-S${si + 1}`,
-                    sensorCode: slot.sensorCode || null,
-                    status:
-                      slot.status === 'available'
-                        ? 0
-                        : slot.status === 'occupied'
-                          ? 1
-                          : slot.status === 'reserved'
-                            ? 2
-                            : 3,
+        (async () => {
+          try {
+            const requestBody = {
+              code: parkingCode,
+              name: parkingName,
+              location: parkingLocation,
+              status: parkingStatus || 1,
+              totalFloors: floors.length,
+              floors: floors.map((floor, fi) => ({
+                code: floor.id?.startsWith('floor-')
+                  ? `F${String(fi + 1).padStart(3, '0')}`
+                  : floor.id,
+                nameFloor: floor.name,
+                parkingCode: parkingCode,
+                status: floor.status ?? 0,
+                level: floor.level,
+                boundary: {
+                  points: floor.boundary.points,
+                  closed: floor.boundary.closed,
+                },
+                zones: floor.zones.map((zone, zi) => ({
+                  code: zone.id || `Z${String(zi + 1).padStart(3, '0')}`,
+                  nameZone: zone.name,
+                  status: zone.status ?? 0,
+                  color: zone.color || '#3b82f6',
+                  points: zone.points,
+                  groupSlots: (zone.slotGroups || []).map((group, gi) => ({
+                    code: group.code || `${zone.id}-GS${gi + 1}`,
+                    nameGroupSlot: group.name || `Row ${gi + 1}`,
+                    status: group.status ?? 0,
+                    color: group.color || zone.color || '#3b82f6',
+                    positionX: group.x,
+                    positionY: group.y,
+                    rotation: group.rotation ?? 0,
+                    direction: group.direction,
+                    width: group.width,
+                    height: group.height,
+                    availableSlots: group.slots.filter((s) => s.status === 'available').length,
+                    occupiedSlots: group.slots.filter((s) => s.status === 'occupied').length,
+                    reservedSlots: group.slots.filter((s) => s.status === 'reserved').length,
+                    slots: group.slots.map((slot, si) => ({
+                      code: slot.code || `${zone.id}-GS${gi + 1}-S${si + 1}`,
+                      nameSlot: slot.code || `${zone.id}-GS${gi + 1}-S${si + 1}`,
+                      sensorCode: slot.sensorCode || null,
+                      status:
+                        slot.status === 'available'
+                          ? 0
+                          : slot.status === 'occupied'
+                            ? 1
+                            : slot.status === 'reserved'
+                              ? 2
+                              : 3,
+                    })),
                   })),
                 })),
-              })),
-              entrances: floor.entrances.map((e, i) => ({
-                code: `E${i + 1}`,
-                positionX: e.x,
-                positionY: e.y,
-                height: e.height,
-                witdh: e.width,
-                rotation: e.rotation ?? 0,
-                status: 1,
-              })),
-              exits: floor.exits.map((e, i) => ({
-                code: `X${i + 1}`,
-                positionX: e.x,
-                positionY: e.y,
-                height: e.height,
-                witdh: e.width,
-                rotation: e.rotation ?? 0,
-                status: 1,
-              })),
-              laneNodes: (floor.laneNodes || [])
-                .filter((node) =>
-                  (floor.laneEdges || []).some(
-                    (e) => e.fromNodeId === node.id || e.toNodeId === node.id,
-                  ),
-                )
-                .map((node) => ({
-                  code: node.id,
-                  positionX: node.x,
-                  positionY: node.y,
+                entrances: floor.entrances.map((e, i) => ({
+                  code: `E${i + 1}`,
+                  positionX: e.x,
+                  positionY: e.y,
+                  height: e.height,
+                  witdh: e.width,
+                  rotation: e.rotation ?? 0,
+                  status: 1,
                 })),
-              lanes: floor.laneEdges
-                .map((edge, i) => {
-                  const fromNode = floor.laneNodes.find((n) => n.id === edge.fromNodeId);
-                  const toNode = floor.laneNodes.find((n) => n.id === edge.toNodeId);
-                  if (!fromNode || !toNode) {
-                    return null;
-                  }
+                exits: floor.exits.map((e, i) => ({
+                  code: `X${i + 1}`,
+                  positionX: e.x,
+                  positionY: e.y,
+                  height: e.height,
+                  witdh: e.width,
+                  rotation: e.rotation ?? 0,
+                  status: 1,
+                })),
+                laneNodes: (floor.laneNodes || [])
+                  .filter((node) =>
+                    (floor.laneEdges || []).some(
+                      (e) => e.fromNodeId === node.id || e.toNodeId === node.id,
+                    ),
+                  )
+                  .map((node) => ({
+                    code: node.id,
+                    positionX: node.x,
+                    positionY: node.y,
+                  })),
+                lanes: floor.laneEdges
+                  .map((edge, i) => {
+                    const fromNode = floor.laneNodes.find((n) => n.id === edge.fromNodeId);
+                    const toNode = floor.laneNodes.find((n) => n.id === edge.toNodeId);
+                    if (!fromNode || !toNode) {
+                      return null;
+                    }
 
-                  return {
-                    // Chỉ giữ code dạng L1, L2, L3... còn lại tạo mới
-                    code: `L${i + 1}`,
-                    status: 1,
-                    points: [fromNode.x, fromNode.y, toNode.x, toNode.y],
-                    laneWidth: edge.width ?? 20,
-                    fromNodeId: edge.fromNodeId,
-                    toNodeId: edge.toNodeId,
-                  };
-                })
-                .filter(Boolean),
-            })),
-          };
+                    return {
+                      // Chỉ giữ code dạng L1, L2, L3... còn lại tạo mới
+                      code: `L${i + 1}`,
+                      status: 1,
+                      points: [fromNode.x, fromNode.y, toNode.x, toNode.y],
+                      laneWidth: edge.width ?? 20,
+                      fromNodeId: edge.fromNodeId,
+                      toNodeId: edge.toNodeId,
+                    };
+                  })
+                  .filter(Boolean),
+              })),
+            };
 
-          await axiosClient.post(PARKING_API.UPDATE_MAP, requestBody);
-          message.success('Map saved successfully!');
+            await axiosClient.post(PARKING_API.UPDATE_MAP, requestBody);
+            message.success('Map saved successfully!');
 
-          await fetchMapData();
+            await fetchMapData({ showPageLoader: false, refitView: false });
 
-          const mapData = {
-            metadata: {
-              version: '2.0',
-              canvasWidth: 800,
-              canvasHeight: 600,
-              scale: scale,
-              savedAt: new Date().toISOString(),
-              gridSize: 20,
-              gridRealSize: gridRealSize,
-              unit: parkingUnit,
-              slotSize: {
-                widthPx: SLOT_SIZE.width,
-                heightPx: SLOT_SIZE.height,
-                widthReal: (SLOT_SIZE.width / 20) * gridRealSize,
-                heightReal: (SLOT_SIZE.height / 20) * gridRealSize,
+            const mapData = {
+              metadata: {
+                version: '2.0',
+                canvasWidth: 800,
+                canvasHeight: 600,
+                scale: scale,
+                savedAt: new Date().toISOString(),
+                gridSize: 20,
+                gridRealSize: gridRealSize,
+                unit: parkingUnit,
+                slotSize: {
+                  widthPx: SLOT_SIZE.width,
+                  heightPx: SLOT_SIZE.height,
+                  widthReal: (SLOT_SIZE.width / 20) * gridRealSize,
+                  heightReal: (SLOT_SIZE.height / 20) * gridRealSize,
+                },
               },
-            },
-            parking: {
-              id: parkingCode,
-              name: parkingName,
-              unit: parkingUnit,
-              floors: floors,
-            },
-          };
-          saveMap(mapData);
-        } catch (error) {
-          console.error('Save error status:', error.response?.status);
-          console.error('Save error detail:', JSON.stringify(error.response?.data, null, 2));
-          message.error(
-            'Failed to save: ' +
-            (error.response?.data?.message || error.response?.data?.error || error.message),
-          );
-        } finally {
-          hideLoading();
-          setIsSaving(false);
-        }
-      }
+              parking: {
+                id: parkingCode,
+                name: parkingName,
+                unit: parkingUnit,
+                floors: floors,
+              },
+            };
+            saveMap(mapData);
+          } catch (error) {
+            console.error('Save error status:', error.response?.status);
+            console.error('Save error detail:', JSON.stringify(error.response?.data, null, 2));
+            message.error(
+              'Failed to save: ' +
+                (error.response?.data?.message || error.response?.data?.error || error.message),
+            );
+          } finally {
+            setIsSaving(false);
+          }
+        })();
+      },
     });
   };
 
@@ -1115,8 +1125,59 @@ const ParkingMapEditor = () => {
     if (!selectedEntity) return;
     const { type, id, parentId } = selectedEntity;
 
-    if (type === 'SLOT' && selectedData?.status !== 'inactive' && selectedData?.status !== 3) {
-      message.warning('Chi co the xoa slot khi trang thai la loi hoac dang chinh sua.');
+    if (type === 'SLOT') {
+      // Status trên DB phải thực sự là inactive (dbStatus = 'inactive')
+      if (selectedData?.dbStatus !== 'inactive') {
+        // Nếu local status là inactive nhưng DB chưa update
+        if (selectedData?.status === 'inactive' || selectedData?.status === 3) {
+          message.warning(
+            'Bạn vừa đổi status nhưng chưa Save Map. Hãy Save Map trước để xác nhận trạng thái Error trên DB, sau đó mới có thể xóa.',
+          );
+        } else {
+          message.warning('Chỉ có thể xóa slot khi trạng thái Error/Editing đã được lưu trên DB.');
+        }
+        return;
+      }
+
+      if (selectedData?.sensorCode || selectedData?.sensorId) {
+        message.warning('Vui lòng gỡ sensor khỏi slot trước khi xóa.');
+        return;
+      }
+
+      const slotLabel = selectedData.nameSlot || selectedData.code || selectedData.id;
+      const grandParentId = selectedEntity.grandParentId;
+
+      Modal.confirm({
+        title: 'Xác nhận xóa slot',
+        content: `Slot "${slotLabel}" sẽ bị xóa. Tiếp tục?`,
+        okText: 'Xóa',
+        okType: 'danger',
+        cancelText: 'Hủy',
+        onOk: () => {
+          // Xóa ngay từ state
+          if (!parentId) {
+            setStandaloneSlots((prev) => prev.filter((s) => s.id !== id));
+          } else {
+            setZones((prev) =>
+              prev.map((z) => {
+                if (z.id !== grandParentId) return z;
+                return {
+                  ...z,
+                  slotGroups: z.slotGroups.map((g) => {
+                    if (g.id !== parentId) return g;
+                    return {
+                      ...g,
+                      slots: g.slots.filter((s) => s.id !== id),
+                    };
+                  }),
+                };
+              }),
+            );
+          }
+          setSelectedEntity(null);
+          message.success('Slot đã bị xóa. Nhấn Save Map để lưu.');
+        },
+      });
       return;
     }
 
@@ -1142,33 +1203,6 @@ const ParkingMapEditor = () => {
           }),
         );
       }
-    } else if (type === 'SLOT') {
-      if (!parentId) {
-        // Standalone Slot
-        setStandaloneSlots((prev) => prev.filter((s) => s.id !== id));
-      } else {
-        // Grouped Slot deletion - usually we don't delete single slots from grid,
-        // but if required, we could mark it as 'removed' or shift others.
-        // For now, let's assume Delete is mainly for Standalone.
-        // Or maybe the user wants to remove the slot from the array?
-        // Given the grid nature, removing one slot might leave a hole.
-        // Let's implement removal for now.
-        setZones((prev) =>
-          prev.map((z) => {
-            if (z.id !== selectedEntity.grandParentId) return z;
-            return {
-              ...z,
-              slotGroups: z.slotGroups.map((g) => {
-                if (g.id !== parentId) return g;
-                return {
-                  ...g,
-                  slots: g.slots.filter((s) => s.id !== id),
-                };
-              }),
-            };
-          }),
-        );
-      }
     }
 
     setSelectedEntity(null);
@@ -1176,7 +1210,16 @@ const ParkingMapEditor = () => {
 
   if (isLoadingMap) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', width: '100%', backgroundColor: '#f3f4f6' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '100vh',
+          width: '100%',
+          backgroundColor: '#f3f4f6',
+        }}
+      >
         <Spin size="large" tip="Loading map data..." />
       </div>
     );
@@ -1209,12 +1252,19 @@ const ParkingMapEditor = () => {
       />
 
       {/* Floor Tabs */}
-      <div className="floor-tabs-container">
+      <div
+        className="floor-tabs-container"
+        style={{
+          pointerEvents: isSaving ? 'none' : 'auto',
+          opacity: isSaving ? 0.65 : 1,
+        }}
+      >
         {floors.map((floor) => (
           <div
             key={floor.id}
             className={`floor-tab ${activeFloorId === floor.id ? 'active' : ''}`}
             onClick={() => {
+              if (isSaving) return;
               setActiveFloorId(floor.id);
               setSelectedEntity(null);
             }}
@@ -1227,7 +1277,13 @@ const ParkingMapEditor = () => {
             )}
           </div>
         ))}
-        <div className="floor-tab add-floor-btn" onClick={() => setIsFloorModalVisible(true)}>
+        <div
+          className="floor-tab add-floor-btn"
+          onClick={() => {
+            if (isSaving) return;
+            setIsFloorModalVisible(true);
+          }}
+        >
           <PlusOutlined />
         </div>
       </div>
@@ -1235,6 +1291,7 @@ const ParkingMapEditor = () => {
       <div className="editor-main-layout">
         <div className="editor-tools-panel">
           <EditorToolsPanel
+            interactionLocked={isSaving}
             editorMode={editorMode}
             setEditorMode={setEditorMode}
             onClearAllSlots={handleClearAllSlots}
@@ -1255,16 +1312,26 @@ const ParkingMapEditor = () => {
 
         <div className="editor-canvas-area" style={{ position: 'relative' }}>
           {isSaving && (
-            <div style={{
-              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-              backgroundColor: 'rgba(255, 255, 255, 0.7)',
-              zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'not-allowed'
-            }}>
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                zIndex: 9999,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'not-allowed',
+              }}
+            >
               <Spin size="large" tip="Saving map..." />
             </div>
           )}
           <EditorCanvas
+            interactionLocked={isSaving}
             zones={zones}
             standaloneSlots={standaloneSlots}
             laneNodes={laneNodes}
@@ -1331,20 +1398,21 @@ const ParkingMapEditor = () => {
 
         <div className="editor-properties-panel">
           <EditorPropertiesPanel
+            interactionLocked={isSaving}
             selectedData={
               selectedData ||
               (selectedEntity
                 ? null
                 : {
-                  parkingName,
-                  parkingCode,
-                  parkingLocation,
-                  parkingUnit,
-                  activeFloorLevel: activeFloor.level,
-                  floorStatus: activeFloor.status ?? 1,
-                  gridRealSize,
-                  status: parkingStatus,
-                })
+                    parkingName,
+                    parkingCode,
+                    parkingLocation,
+                    parkingUnit,
+                    activeFloorLevel: activeFloor.level,
+                    floorStatus: activeFloor.status ?? 1,
+                    gridRealSize,
+                    status: parkingStatus,
+                  })
             }
             selectedType={selectedEntity ? selectedEntity.type : 'PARKING_GLOBAL'}
             selectedEntity={selectedEntity}

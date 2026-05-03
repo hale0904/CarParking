@@ -12,6 +12,7 @@ const BoundaryPolygon = ({
     parkingUnit = 'm',
     onDragVertex,
     onVertexClick,
+    allowVertexDrag = true,
 }) => {
     const [hoveredVertexIndex, setHoveredVertexIndex] = useState(null);
     const [hoveredEdge, setHoveredEdge] = useState(null);
@@ -57,10 +58,11 @@ const BoundaryPolygon = ({
             {vertices.map((v, i) => {
                 const isFirst = i === 0;
                 // Vertices are draggable if polygon is closed (edit mode)
-                const isDraggable = closed;
+                const isDraggable = closed && allowVertexDrag;
 
                 // Allow closing by clicking first point
-                const isInteractive = isDraggable || (isDrawing && isFirst && canClose);
+                const isInteractive =
+                    isDraggable || (isDrawing && isFirst && canClose && allowVertexDrag);
                 const isHovered = hoveredVertexIndex === i;
 
                 return (

@@ -30,33 +30,42 @@ const EditorToolsPanel = ({
     onCancelDrawZone,
     onUndoDrawZone,
     draftZone,
-    onClearAllSlots
+    onClearAllSlots,
+    interactionLocked = false,
 }) => {
     const handleDragStart = (e, type) => {
         e.dataTransfer.setData('toolType', type);
     };
 
-    const ToolItem = ({ type, label, icon }) => (
+    const ToolItem = ({ type, label, icon }) => {
+        const slotBlocked = !isBoundaryClosed && (type === 'SLOT_GROUP' || type === 'SLOT');
+        const blocked = interactionLocked || slotBlocked;
+        return (
         <div
-            className={`tool-btn ${!isBoundaryClosed && (type === 'SLOT_GROUP' || type === 'SLOT') ? 'tool-button--disabled' : ''}`}
-            draggable={isBoundaryClosed || (type !== 'SLOT_GROUP' && type !== 'SLOT')}
+            className={`tool-btn ${slotBlocked ? 'tool-button--disabled' : ''}`}
+            draggable={!blocked && (isBoundaryClosed || (type !== 'SLOT_GROUP' && type !== 'SLOT'))}
             onDragStart={(e) => {
+                if (blocked) {
+                    e.preventDefault();
+                    return;
+                }
                 if (!isBoundaryClosed && (type === 'SLOT_GROUP' || type === 'SLOT')) {
                     e.preventDefault();
                     return;
                 }
                 handleDragStart(e, type);
             }}
-            title={(!isBoundaryClosed && (type === 'SLOT_GROUP' || type === 'SLOT')) ? "Draw and close a boundary first" : label}
+            title={slotBlocked ? "Draw and close a boundary first" : label}
             style={{
-                opacity: (!isBoundaryClosed && (type === 'SLOT_GROUP' || type === 'SLOT')) ? 0.4 : 1,
-                cursor: (!isBoundaryClosed && (type === 'SLOT_GROUP' || type === 'SLOT')) ? 'not-allowed' : 'grab'
+                opacity: blocked ? 0.4 : 1,
+                cursor: blocked ? 'not-allowed' : 'grab'
             }}
         >
             {icon}
             <span>{label}</span>
         </div>
     );
+    };
 
     return (
         <div className="tools-container">
@@ -66,11 +75,16 @@ const EditorToolsPanel = ({
                 <div className="tools-grid">
                     <div
                         className={`tool-btn ${editorMode === 'PAN' ? 'active' : ''}`}
-                        onClick={() => setEditorMode(editorMode === 'PAN' ? null : 'PAN')}
+                        onClick={() => {
+                            if (interactionLocked) return;
+                            setEditorMode(editorMode === 'PAN' ? null : 'PAN');
+                        }}
                         style={{
                             backgroundColor: editorMode === 'PAN' ? '#e6f7ff' : 'transparent',
                             borderColor: editorMode === 'PAN' ? '#1890ff' : '#d9d9d9',
-                            color: editorMode === 'PAN' ? '#1890ff' : 'inherit'
+                            color: editorMode === 'PAN' ? '#1890ff' : 'inherit',
+                            opacity: interactionLocked ? 0.45 : 1,
+                            cursor: interactionLocked ? 'not-allowed' : 'pointer',
                         }}
                     >
                         <DragOutlined />
@@ -79,9 +93,9 @@ const EditorToolsPanel = ({
 
                     <Button
                         className={`tool-btn ${editorMode === 'DRAW_ZONE' ? 'active' : ''} ${!isBoundaryClosed ? 'tool-button--disabled' : ''}`}
-                        disabled={!isBoundaryClosed}
+                        disabled={interactionLocked || !isBoundaryClosed}
                         title={!isBoundaryClosed ? "Draw a boundary first before adding zones" : "Draw Zone"}
-                        onClick={!isBoundaryClosed ? undefined : onStartDrawZone}
+                        onClick={interactionLocked || !isBoundaryClosed ? undefined : onStartDrawZone}
                         style={{
                             backgroundColor: editorMode === 'DRAW_ZONE' ? '#e6f7ff' : 'transparent',
                             borderColor: editorMode === 'DRAW_ZONE' ? '#1890ff' : '#d9d9d9',
@@ -113,6 +127,7 @@ const EditorToolsPanel = ({
                         <Button
                             danger
                             icon={<DeleteOutlined />}
+                            disabled={interactionLocked}
                             onClick={onClearAllSlots}
                             style={{ width: '100%', marginTop: 8 }}
                         >
@@ -134,6 +149,7 @@ const EditorToolsPanel = ({
                             block
                             icon={<BorderOutlined />}
                             type={editorMode === 'DRAW_BOUNDARY' ? 'primary' : 'default'}
+                            disabled={interactionLocked}
                             onClick={onStartDraw}
                             style={{ marginBottom: 8 }}
                         >
@@ -145,6 +161,7 @@ const EditorToolsPanel = ({
                                 <Button
                                     block
                                     icon={<UndoOutlined />}
+                                    disabled={interactionLocked}
                                     onClick={onUndoBoundary}
                                     style={{ marginBottom: 8 }}
                                 >
@@ -154,6 +171,7 @@ const EditorToolsPanel = ({
                                 <Button
                                     block
                                     type="primary"
+                                    disabled={interactionLocked}
                                     onClick={onFinishDraw}
                                     style={{ marginBottom: 8, backgroundColor: '#10b981', borderColor: '#10b981' }}
                                 >
@@ -165,6 +183,7 @@ const EditorToolsPanel = ({
                         {editorMode === 'DRAW_BOUNDARY' && (
                             <Button
                                 block
+                                disabled={interactionLocked}
                                 onClick={onCancelDraw}
                             >
                                 Cancel
@@ -177,7 +196,11 @@ const EditorToolsPanel = ({
                             block
                             icon={<EditOutlined />}
                             type={editorMode === 'EDIT_BOUNDARY' ? 'primary' : 'default'}
-                            onClick={() => setEditorMode(editorMode === 'EDIT_BOUNDARY' ? null : 'EDIT_BOUNDARY')}
+                            disabled={interactionLocked}
+                            onClick={() => {
+                                if (interactionLocked) return;
+                                setEditorMode(editorMode === 'EDIT_BOUNDARY' ? null : 'EDIT_BOUNDARY');
+                            }}
                             style={{ marginBottom: 8 }}
                         >
                             {editorMode === 'EDIT_BOUNDARY' ? "Stop Editing" : "Edit Boundary"}
@@ -186,6 +209,7 @@ const EditorToolsPanel = ({
                         <Button
                             block
                             danger
+                            disabled={interactionLocked}
                             onClick={onClearBoundary}
                         >
                             Clear Boundary
@@ -198,6 +222,7 @@ const EditorToolsPanel = ({
                         <Button
                             block
                             icon={<UndoOutlined />}
+                            disabled={interactionLocked}
                             onClick={onUndoDrawZone}
                             style={{ marginBottom: 8 }}
                         >
@@ -207,6 +232,7 @@ const EditorToolsPanel = ({
                         <Button
                             block
                             type="primary"
+                            disabled={interactionLocked}
                             onClick={onFinishDrawZone}
                             style={{ marginBottom: 8, backgroundColor: '#10b981', borderColor: '#10b981' }}
                         >
@@ -215,6 +241,7 @@ const EditorToolsPanel = ({
 
                         <Button
                             block
+                            disabled={interactionLocked}
                             onClick={onCancelDrawZone}
                         >
                             Cancel Zone
@@ -232,14 +259,18 @@ const EditorToolsPanel = ({
                     <Button
                         className={`tool-btn ${editorMode === 'DRAW_LANE' ? 'active' : ''}`}
                         title="Click to place nodes, click existing node to connect"
-                        onClick={() => setEditorMode(editorMode === 'DRAW_LANE' ? null : 'DRAW_LANE')}
+                        disabled={interactionLocked}
+                        onClick={() => {
+                            if (interactionLocked) return;
+                            setEditorMode(editorMode === 'DRAW_LANE' ? null : 'DRAW_LANE');
+                        }}
                         style={{
                             backgroundColor: editorMode === 'DRAW_LANE' ? '#e6f7ff' : 'transparent',
                             borderColor: editorMode === 'DRAW_LANE' ? '#1890ff' : '#d9d9d9',
                             color: editorMode === 'DRAW_LANE' ? '#1890ff' : 'inherit',
                             height: 'auto',
                             padding: '8px',
-                            cursor: 'pointer'
+                            cursor: interactionLocked ? 'not-allowed' : 'pointer'
                         }}
                     >
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
@@ -249,16 +280,30 @@ const EditorToolsPanel = ({
                     </Button>
                     <div
                         className="tool-btn"
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, 'ENTRANCE')}
+                        draggable={!interactionLocked}
+                        onDragStart={(e) => {
+                            if (interactionLocked) {
+                                e.preventDefault();
+                                return;
+                            }
+                            handleDragStart(e, 'ENTRANCE');
+                        }}
+                        style={{ opacity: interactionLocked ? 0.45 : 1, cursor: interactionLocked ? 'not-allowed' : 'grab' }}
                     >
                         <GatewayOutlined />
                         <span>Entrance</span>
                     </div>
                     <div
                         className="tool-btn"
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, 'EXIT')}
+                        draggable={!interactionLocked}
+                        onDragStart={(e) => {
+                            if (interactionLocked) {
+                                e.preventDefault();
+                                return;
+                            }
+                            handleDragStart(e, 'EXIT');
+                        }}
+                        style={{ opacity: interactionLocked ? 0.45 : 1, cursor: interactionLocked ? 'not-allowed' : 'grab' }}
                     >
                         <GatewayOutlined style={{ transform: 'rotate(180deg)' }} />
                         <span>Exit</span>
