@@ -25,6 +25,44 @@ const socket = io('https://be-smartparking.onrender.com');
 
 const GRID_SIZE = 20;
 
+/** Fit first floor boundary into viewport; returns Konva Stage scale and position. */
+const centerMapOnContent = (mappedFloors, stageWidth, stageHeight) => {
+  const activeFloor = mappedFloors[0];
+  const points = activeFloor?.boundary?.points;
+
+  if (!points || points.length < 4) return null;
+
+  const xs = points.filter((_, i) => i % 2 === 0);
+  const ys = points.filter((_, i) => i % 2 !== 0);
+
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  const contentWidth = maxX - minX;
+  const contentHeight = maxY - minY;
+
+  if (
+    !Number.isFinite(contentWidth) ||
+    !Number.isFinite(contentHeight) ||
+    contentWidth <= 0 ||
+    contentHeight <= 0
+  ) {
+    return null;
+  }
+
+  const padding = 80;
+  const scaleX = (stageWidth - padding * 2) / contentWidth;
+  const scaleY = (stageHeight - padding * 2) / contentHeight;
+  const newScale = Math.min(Math.max(0.1, Math.min(scaleX, scaleY, 1)), 5);
+
+  const offsetX = (stageWidth - contentWidth * newScale) / 2 - minX * newScale;
+  const offsetY = (stageHeight - contentHeight * newScale) / 2 - minY * newScale;
+
+  return { scale: newScale, offset: { x: offsetX, y: offsetY } };
+};
+
 // Convert old Rect-lane (x,y,width,height,rotation) → new Polyline-lane (points[], width)
 const migrateLegacyLane = (lane) => {
   if (Array.isArray(lane.points) && lane.points.length >= 4) {
@@ -159,120 +197,141 @@ const ParkingMapEditor = () => {
   ]);
   const [activeFloorId, setActiveFloorId] = useState(initialFloorId);
   const [isLoadingMap, setIsLoadingMap] = useState(true);
+  const [scale, setScale] = useState(0.29);
+  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
 
   const fetchMapData = async () => {
     setIsLoadingMap(true);
+    let floorsToFit = null;
     try {
-        let normalizedSensors = [];
+      let normalizedSensors = [];
 
-        try {
-          const sensorRes = await axiosClient.post(PARKING_API.GET_LIST_SENSOR, {});
-          const sensorList = sensorRes?.data || sensorRes;
-          const normalizedSensorsData = (sensorList || []).map((s) => ({ ...s, id: s._id }));
-          normalizedSensors = normalizedSensorsData;
-          setSensors(normalizedSensorsData);
-        } catch (e) {
-          console.error('Failed to fetch sensors:', e);
-        }
-
-        const res = await axiosClient.post(PARKING_API.GET_LIST, {});
-        const list = res?.data || res;
-
-        if (list && list.length > 0) {
-          const item = list[0];
-          setParkingCode(item.code || 'PK001');
-          setParkingName(item.name || 'New Parking Lot');
-          setParkingLocation(item.location || '');
-          setParkingStatus(item.status !== undefined ? item.status : 1);
-
-          if (item.floors && item.floors.length > 0) {
-            const mappedFloors = item.floors.map((floor) => ({
-              id: floor.code,
-              name: floor.nameFloor,
-              level: floor.level || 1,
-              status: floor.status ?? 0,
-              boundary: floor.boundary || { points: [], closed: false },
-              standaloneSlots: [],
-              ...parseLegacyLanesToGraph(floor.lanes || [], floor.laneNodes || []),
-              entrances: (floor.entrances || []).map((e) => ({
-                id: e.code,
-                x: e.positionX,
-                y: e.positionY,
-                width: e.witdh,
-                height: e.height,
-                rotation: e.rotation,
-              })),
-              exits: (floor.exits || []).map((e) => ({
-                id: e.code,
-                x: e.positionX,
-                y: e.positionY,
-                width: e.witdh,
-                height: e.height,
-                rotation: e.rotation,
-              })),
-              zones: (floor.zones || []).map((zone) => ({
-                id: zone.code,
-                name: zone.nameZone,
-                status: zone.status !== undefined ? zone.status : 1,
-                color: zone.color || '#3b82f6',
-                points: zone.points,
-                slotGroups: (zone.groupSlots || []).map((group) => ({
-                  id: group.code,
-                  code: group.code,
-                  name: group.nameGroupSlot,
-                  x: group.positionX,
-                  y: group.positionY,
-                  width: group.width,
-                  height: group.height,
-                  rotation: group.rotation,
-                  direction: group.direction,
-                  slots:
-                    group.slots && group.slots.length > 0
-                      ? group.slots.map((slot) => ({
-                        id: slot.code,
-                        code: slot.code,
-                        nameSlot: slot.nameSlot || slot.code || '',
-                        mongoId: slot._id || null,
-                        status:
-                          slot.status === 0
-                            ? 'available' // xanh
-                            : slot.status === 1
-                              ? 'occupied' // đỏ
-                              : slot.status === 2
-                                ? 'reserved' // vàng
-                                : slot.status === 3
-                                  ? 'inactive' // xám
-                                  : 'available',
-                        sensorCode:
-                          normalizedSensors.find((s) => s._id === slot.sensorId)?.code || null,
-                        sensorId: slot.sensorId || null,
-                        sensorStatus:
-                          slot.sensorStatus !== undefined
-                            ? slot.sensorStatus
-                              ? 'online'
-                              : 'offline'
-                            : null,
-                      }))
-                      : Array.from({ length: group.availableSlots || 0 }).map((_, i) => ({
-                        id: `${zone.code}-${group.code}-S${i + 1}`,
-                        code: `S${i + 1}`,
-                        status: 'available',
-                        sensorId: null,
-                        sensorStatus: null,
-                      })),
-                })),
-              })),
-            }));
-            setFloors(mappedFloors);
-            setActiveFloorId(mappedFloors[0].id);
-          }
-          setIsEditorActive(true);
-        }
-      } catch (err) {
-        console.error('Failed to load map on mount:', err);
-      } finally {
-        setIsLoadingMap(false);
+      try {
+        const sensorRes = await axiosClient.post(PARKING_API.GET_LIST_SENSOR, {});
+        const sensorList = sensorRes?.data || sensorRes;
+        const normalizedSensorsData = (sensorList || []).map((s) => ({ ...s, id: s._id }));
+        normalizedSensors = normalizedSensorsData;
+        setSensors(normalizedSensorsData);
+      } catch (e) {
+        console.error('Failed to fetch sensors:', e);
       }
+
+      const res = await axiosClient.post(PARKING_API.GET_LIST, {});
+      const list = res?.data || res;
+
+      if (list && list.length > 0) {
+        const item = list[0];
+        setParkingCode(item.code || 'PK001');
+        setParkingName(item.name || 'New Parking Lot');
+        setParkingLocation(item.location || '');
+        setParkingStatus(item.status !== undefined ? item.status : 1);
+
+        if (item.floors && item.floors.length > 0) {
+          const mappedFloors = item.floors.map((floor) => ({
+            id: floor.code,
+            name: floor.nameFloor,
+            level: floor.level || 1,
+            status: floor.status ?? 0,
+            boundary: floor.boundary || { points: [], closed: false },
+            standaloneSlots: [],
+            ...parseLegacyLanesToGraph(floor.lanes || [], floor.laneNodes || []),
+            entrances: (floor.entrances || []).map((e) => ({
+              id: e.code,
+              x: e.positionX,
+              y: e.positionY,
+              width: e.witdh,
+              height: e.height,
+              rotation: e.rotation,
+            })),
+            exits: (floor.exits || []).map((e) => ({
+              id: e.code,
+              x: e.positionX,
+              y: e.positionY,
+              width: e.witdh,
+              height: e.height,
+              rotation: e.rotation,
+            })),
+            zones: (floor.zones || []).map((zone) => ({
+              id: zone.code,
+              name: zone.nameZone,
+              status: zone.status !== undefined ? zone.status : 1,
+              color: zone.color || '#3b82f6',
+              points: zone.points,
+              slotGroups: (zone.groupSlots || []).map((group) => ({
+                id: group.code,
+                code: group.code,
+                name: group.nameGroupSlot,
+                x: group.positionX,
+                y: group.positionY,
+                width: group.width,
+                height: group.height,
+                rotation: group.rotation,
+                direction: group.direction,
+                slots:
+                  group.slots && group.slots.length > 0
+                    ? group.slots.map((slot) => ({
+                      id: slot.code,
+                      code: slot.code,
+                      nameSlot: slot.nameSlot || slot.code || '',
+                      mongoId: slot._id || null,
+                      status:
+                        slot.status === 0
+                          ? 'available' // xanh
+                          : slot.status === 1
+                            ? 'occupied' // đỏ
+                            : slot.status === 2
+                              ? 'reserved' // vàng
+                              : slot.status === 3
+                                ? 'inactive' // xám
+                                : 'available',
+                      sensorCode:
+                        normalizedSensors.find((s) => s._id === slot.sensorId)?.code || null,
+                      sensorId: slot.sensorId || null,
+                      sensorStatus:
+                        slot.sensorStatus !== undefined
+                          ? slot.sensorStatus
+                            ? 'online'
+                            : 'offline'
+                          : null,
+                    }))
+                    : Array.from({ length: group.availableSlots || 0 }).map((_, i) => ({
+                      id: `${zone.code}-${group.code}-S${i + 1}`,
+                      code: `S${i + 1}`,
+                      status: 'available',
+                      sensorId: null,
+                      sensorStatus: null,
+                    })),
+              })),
+            })),
+          }));
+          floorsToFit = mappedFloors;
+          setFloors(mappedFloors);
+          setActiveFloorId(mappedFloors[0].id);
+        }
+        setIsEditorActive(true);
+      }
+    } catch (err) {
+      console.error('Failed to load map on mount:', err);
+    } finally {
+      setIsLoadingMap(false);
+      if (floorsToFit?.length) {
+        const snapshot = floorsToFit;
+        queueMicrotask(() => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              const viewport = document.querySelector('.parking-map-editor .canvas-viewport');
+              const stageWidth = viewport?.clientWidth || 900;
+              const stageHeight = viewport?.clientHeight || 600;
+              const centerResult = centerMapOnContent(snapshot, stageWidth, stageHeight);
+              if (centerResult) {
+                setScale(centerResult.scale);
+                setStagePos(centerResult.offset);
+              }
+            });
+          });
+        });
+      }
+    }
   };
 
   React.useEffect(() => {
@@ -363,7 +422,6 @@ const ParkingMapEditor = () => {
     updateActiveFloor((f) => ({ boundary: typeof val === 'function' ? val(f.boundary) : val }));
 
   const [selectedEntity, setSelectedEntity] = useState(null); // { type, id, parentId? }
-  const [scale, setScale] = useState(1); // Stage zoom level
 
   // Draft states for drawing
   const [draftZone, setDraftZone] = useState({
@@ -885,148 +943,148 @@ const ParkingMapEditor = () => {
 
         try {
           const requestBody = {
-        code: parkingCode,
-        name: parkingName,
-        location: parkingLocation,
-        status: parkingStatus || 1,
-        totalFloors: floors.length,
-        floors: floors.map((floor, fi) => ({
-          code: floor.id?.startsWith('floor-') ? `F${String(fi + 1).padStart(3, '0')}` : floor.id,
-          nameFloor: floor.name,
-          parkingCode: parkingCode,
-          status: floor.status ?? 0,
-          level: floor.level,
-          boundary: {
-            points: floor.boundary.points,
-            closed: floor.boundary.closed,
-          },
-          zones: floor.zones.map((zone, zi) => ({
-            code: zone.id || `Z${String(zi + 1).padStart(3, '0')}`,
-            nameZone: zone.name,
-            status: zone.status ?? 0,
-            color: zone.color || '#3b82f6',
-            points: zone.points,
-            groupSlots: (zone.slotGroups || []).map((group, gi) => ({
-              code: group.code || `${zone.id}-GS${gi + 1}`,
-              nameGroupSlot: group.name || `Row ${gi + 1}`,
-              status: group.status ?? 0,
-              color: group.color || zone.color || '#3b82f6',
-              positionX: group.x,
-              positionY: group.y,
-              rotation: group.rotation ?? 0,
-              direction: group.direction,
-              width: group.width,
-              height: group.height,
-              availableSlots: group.slots.filter((s) => s.status === 'available').length,
-              occupiedSlots: group.slots.filter((s) => s.status === 'occupied').length,
-              reservedSlots: group.slots.filter((s) => s.status === 'reserved').length,
-              slots: group.slots.map((slot, si) => ({
-                code: slot.code || `${zone.id}-GS${gi + 1}-S${si + 1}`,
-                nameSlot: slot.code || `${zone.id}-GS${gi + 1}-S${si + 1}`,
-                sensorCode: slot.sensorCode || null,
-                status:
-                  slot.status === 'available'
-                    ? 0
-                    : slot.status === 'occupied'
-                      ? 1
-                      : slot.status === 'reserved'
-                        ? 2
-                        : 3,
+            code: parkingCode,
+            name: parkingName,
+            location: parkingLocation,
+            status: parkingStatus || 1,
+            totalFloors: floors.length,
+            floors: floors.map((floor, fi) => ({
+              code: floor.id?.startsWith('floor-') ? `F${String(fi + 1).padStart(3, '0')}` : floor.id,
+              nameFloor: floor.name,
+              parkingCode: parkingCode,
+              status: floor.status ?? 0,
+              level: floor.level,
+              boundary: {
+                points: floor.boundary.points,
+                closed: floor.boundary.closed,
+              },
+              zones: floor.zones.map((zone, zi) => ({
+                code: zone.id || `Z${String(zi + 1).padStart(3, '0')}`,
+                nameZone: zone.name,
+                status: zone.status ?? 0,
+                color: zone.color || '#3b82f6',
+                points: zone.points,
+                groupSlots: (zone.slotGroups || []).map((group, gi) => ({
+                  code: group.code || `${zone.id}-GS${gi + 1}`,
+                  nameGroupSlot: group.name || `Row ${gi + 1}`,
+                  status: group.status ?? 0,
+                  color: group.color || zone.color || '#3b82f6',
+                  positionX: group.x,
+                  positionY: group.y,
+                  rotation: group.rotation ?? 0,
+                  direction: group.direction,
+                  width: group.width,
+                  height: group.height,
+                  availableSlots: group.slots.filter((s) => s.status === 'available').length,
+                  occupiedSlots: group.slots.filter((s) => s.status === 'occupied').length,
+                  reservedSlots: group.slots.filter((s) => s.status === 'reserved').length,
+                  slots: group.slots.map((slot, si) => ({
+                    code: slot.code || `${zone.id}-GS${gi + 1}-S${si + 1}`,
+                    nameSlot: slot.code || `${zone.id}-GS${gi + 1}-S${si + 1}`,
+                    sensorCode: slot.sensorCode || null,
+                    status:
+                      slot.status === 'available'
+                        ? 0
+                        : slot.status === 'occupied'
+                          ? 1
+                          : slot.status === 'reserved'
+                            ? 2
+                            : 3,
+                  })),
+                })),
               })),
-            })),
-          })),
-          entrances: floor.entrances.map((e, i) => ({
-            code: `E${i + 1}`,
-            positionX: e.x,
-            positionY: e.y,
-            height: e.height,
-            witdh: e.width,
-            rotation: e.rotation ?? 0,
-            status: 1,
-          })),
-          exits: floor.exits.map((e, i) => ({
-            code: `X${i + 1}`,
-            positionX: e.x,
-            positionY: e.y,
-            height: e.height,
-            witdh: e.width,
-            rotation: e.rotation ?? 0,
-            status: 1,
-          })),
-          laneNodes: (floor.laneNodes || [])
-            .filter((node) =>
-              (floor.laneEdges || []).some(
-                (e) => e.fromNodeId === node.id || e.toNodeId === node.id,
-              ),
-            )
-            .map((node) => ({
-              code: node.id,
-              positionX: node.x,
-              positionY: node.y,
-            })),
-          lanes: floor.laneEdges
-            .map((edge, i) => {
-              const fromNode = floor.laneNodes.find((n) => n.id === edge.fromNodeId);
-              const toNode = floor.laneNodes.find((n) => n.id === edge.toNodeId);
-              if (!fromNode || !toNode) {
-                return null;
-              }
-
-              return {
-                // Chỉ giữ code dạng L1, L2, L3... còn lại tạo mới
-                code: `L${i + 1}`,
+              entrances: floor.entrances.map((e, i) => ({
+                code: `E${i + 1}`,
+                positionX: e.x,
+                positionY: e.y,
+                height: e.height,
+                witdh: e.width,
+                rotation: e.rotation ?? 0,
                 status: 1,
-                points: [fromNode.x, fromNode.y, toNode.x, toNode.y],
-                laneWidth: edge.width ?? 20,
-                fromNodeId: edge.fromNodeId,
-                toNodeId: edge.toNodeId,
-              };
-            })
-            .filter(Boolean),
-        })),
-      };
+              })),
+              exits: floor.exits.map((e, i) => ({
+                code: `X${i + 1}`,
+                positionX: e.x,
+                positionY: e.y,
+                height: e.height,
+                witdh: e.width,
+                rotation: e.rotation ?? 0,
+                status: 1,
+              })),
+              laneNodes: (floor.laneNodes || [])
+                .filter((node) =>
+                  (floor.laneEdges || []).some(
+                    (e) => e.fromNodeId === node.id || e.toNodeId === node.id,
+                  ),
+                )
+                .map((node) => ({
+                  code: node.id,
+                  positionX: node.x,
+                  positionY: node.y,
+                })),
+              lanes: floor.laneEdges
+                .map((edge, i) => {
+                  const fromNode = floor.laneNodes.find((n) => n.id === edge.fromNodeId);
+                  const toNode = floor.laneNodes.find((n) => n.id === edge.toNodeId);
+                  if (!fromNode || !toNode) {
+                    return null;
+                  }
 
-      await axiosClient.post(PARKING_API.UPDATE_MAP, requestBody);
-      message.success('Map saved successfully!');
+                  return {
+                    // Chỉ giữ code dạng L1, L2, L3... còn lại tạo mới
+                    code: `L${i + 1}`,
+                    status: 1,
+                    points: [fromNode.x, fromNode.y, toNode.x, toNode.y],
+                    laneWidth: edge.width ?? 20,
+                    fromNodeId: edge.fromNodeId,
+                    toNodeId: edge.toNodeId,
+                  };
+                })
+                .filter(Boolean),
+            })),
+          };
 
-      await fetchMapData();
+          await axiosClient.post(PARKING_API.UPDATE_MAP, requestBody);
+          message.success('Map saved successfully!');
 
-      const mapData = {
-        metadata: {
-          version: '2.0',
-          canvasWidth: 800,
-          canvasHeight: 600,
-          scale: scale,
-          savedAt: new Date().toISOString(),
-          gridSize: 20,
-          gridRealSize: gridRealSize,
-          unit: parkingUnit,
-          slotSize: {
-            widthPx: SLOT_SIZE.width,
-            heightPx: SLOT_SIZE.height,
-            widthReal: (SLOT_SIZE.width / 20) * gridRealSize,
-            heightReal: (SLOT_SIZE.height / 20) * gridRealSize,
-          },
-        },
-        parking: {
-          id: parkingCode,
-          name: parkingName,
-          unit: parkingUnit,
-          floors: floors,
-        },
-      };
-      saveMap(mapData);
-    } catch (error) {
-      console.error('Save error status:', error.response?.status);
-      console.error('Save error detail:', JSON.stringify(error.response?.data, null, 2));
-      message.error(
-        'Failed to save: ' +
-        (error.response?.data?.message || error.response?.data?.error || error.message),
-      );
-    } finally {
-      hideLoading();
-      setIsSaving(false);
-    }
+          await fetchMapData();
+
+          const mapData = {
+            metadata: {
+              version: '2.0',
+              canvasWidth: 800,
+              canvasHeight: 600,
+              scale: scale,
+              savedAt: new Date().toISOString(),
+              gridSize: 20,
+              gridRealSize: gridRealSize,
+              unit: parkingUnit,
+              slotSize: {
+                widthPx: SLOT_SIZE.width,
+                heightPx: SLOT_SIZE.height,
+                widthReal: (SLOT_SIZE.width / 20) * gridRealSize,
+                heightReal: (SLOT_SIZE.height / 20) * gridRealSize,
+              },
+            },
+            parking: {
+              id: parkingCode,
+              name: parkingName,
+              unit: parkingUnit,
+              floors: floors,
+            },
+          };
+          saveMap(mapData);
+        } catch (error) {
+          console.error('Save error status:', error.response?.status);
+          console.error('Save error detail:', JSON.stringify(error.response?.data, null, 2));
+          message.error(
+            'Failed to save: ' +
+            (error.response?.data?.message || error.response?.data?.error || error.message),
+          );
+        } finally {
+          hideLoading();
+          setIsSaving(false);
+        }
       }
     });
   };
@@ -1230,6 +1288,8 @@ const ParkingMapEditor = () => {
             onDrop={handleDrop}
             scale={scale}
             setScale={setScale}
+            stagePos={stagePos}
+            onStagePosChange={setStagePos}
             boundary={boundary}
             gridRealSize={gridRealSize}
             parkingUnit={parkingUnit}

@@ -108,6 +108,8 @@ const EditorCanvas = ({
 
   scale,
   setScale,
+  stagePos = { x: 0, y: 0 },
+  onStagePosChange,
   boundary,
   onUpdateBoundary,
   onFinishBoundary,
@@ -272,6 +274,7 @@ const EditorCanvas = ({
     };
 
     stage.position(newPos);
+    onStagePosChange?.(newPos);
     updateHUD();
   };
 
@@ -592,6 +595,12 @@ const EditorCanvas = ({
           scaleX={scale}
           scaleY={scale}
           ref={stageRef}
+          {...(!readOnly ? { x: stagePos.x, y: stagePos.y } : {})}
+          onDragEnd={() => {
+            if (readOnly || editorMode !== 'PAN' || !onStagePosChange || !stageRef.current) return;
+            const st = stageRef.current;
+            onStagePosChange({ x: st.x(), y: st.y() });
+          }}
           onMouseDown={(e) => {
             const stage = stageRef.current;
             if (readOnly || editorMode === 'PAN') return; // Allow dragging logic from Stage prop
