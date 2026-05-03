@@ -22,6 +22,7 @@ import {
   LanguageContext,
   useAdminI18n,
 } from '../../../c-lib/i18n/adminI18n';
+import AuthHelper from '../../../c-lib/auth/auth.helper';
 
 export const IotCategoryNavContext = React.createContext({
   categories: [],
@@ -66,7 +67,15 @@ const AdminFooter = ({ collapsed }) => {
       label: t('common.logout'),
       icon: <LogoutOutlined />,
       danger: true,
-      onClick: () => navigate('/'),
+      onClick: () => {
+        AuthHelper.clearTokens();
+        notification.success({
+          message: language === 'vi' ? 'Đăng xuất thành công' : 'Logout Successful',
+          description: language === 'vi' ? 'Bạn đã đăng xuất khỏi hệ thống.' : 'You have been logged out of the system.',
+          placement: 'topRight',
+        });
+        navigate('/login');
+      },
     },
   ];
 

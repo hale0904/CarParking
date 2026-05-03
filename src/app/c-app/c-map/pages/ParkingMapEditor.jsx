@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Button, Modal, Form, Input, InputNumber, Select, message } from 'antd';
+import { Button, Modal, Form, Input, InputNumber, Select, message, Spin } from 'antd';
 import { PlusOutlined, FileAddOutlined } from '@ant-design/icons';
 import { useParkingMapStorage } from '../../../c-lib/hooks/useParkingMapStorage';
 
@@ -158,10 +158,11 @@ const ParkingMapEditor = () => {
     },
   ]);
   const [activeFloorId, setActiveFloorId] = useState(initialFloorId);
+  const [isLoadingMap, setIsLoadingMap] = useState(true);
 
-  React.useEffect(() => {
-    const loadMapData = async () => {
-      try {
+  const fetchMapData = async () => {
+    setIsLoadingMap(true);
+    try {
         let normalizedSensors = [];
 
         try {
@@ -228,37 +229,37 @@ const ParkingMapEditor = () => {
                   slots:
                     group.slots && group.slots.length > 0
                       ? group.slots.map((slot) => ({
-                          id: slot.code,
-                          code: slot.code,
-                          nameSlot: slot.nameSlot || slot.code || '',
-                          mongoId: slot._id || null,
-                          status:
-                            slot.status === 0
-                              ? 'available' // xanh
-                              : slot.status === 1
-                                ? 'occupied' // đỏ
-                                : slot.status === 2
-                                  ? 'reserved' // vàng
-                                  : slot.status === 3
-                                    ? 'inactive' // xám
-                                    : 'available',
-                          sensorCode:
-                            normalizedSensors.find((s) => s._id === slot.sensorId)?.code || null,
-                          sensorId: slot.sensorId || null,
-                          sensorStatus:
-                            slot.sensorStatus !== undefined
-                              ? slot.sensorStatus
-                                ? 'online'
-                                : 'offline'
-                              : null,
-                        }))
+                        id: slot.code,
+                        code: slot.code,
+                        nameSlot: slot.nameSlot || slot.code || '',
+                        mongoId: slot._id || null,
+                        status:
+                          slot.status === 0
+                            ? 'available' // xanh
+                            : slot.status === 1
+                              ? 'occupied' // đỏ
+                              : slot.status === 2
+                                ? 'reserved' // vàng
+                                : slot.status === 3
+                                  ? 'inactive' // xám
+                                  : 'available',
+                        sensorCode:
+                          normalizedSensors.find((s) => s._id === slot.sensorId)?.code || null,
+                        sensorId: slot.sensorId || null,
+                        sensorStatus:
+                          slot.sensorStatus !== undefined
+                            ? slot.sensorStatus
+                              ? 'online'
+                              : 'offline'
+                            : null,
+                      }))
                       : Array.from({ length: group.availableSlots || 0 }).map((_, i) => ({
-                          id: `${zone.code}-${group.code}-S${i + 1}`,
-                          code: `S${i + 1}`,
-                          status: 'available',
-                          sensorId: null,
-                          sensorStatus: null,
-                        })),
+                        id: `${zone.code}-${group.code}-S${i + 1}`,
+                        code: `S${i + 1}`,
+                        status: 'available',
+                        sensorId: null,
+                        sensorStatus: null,
+                      })),
                 })),
               })),
             }));
@@ -269,10 +270,13 @@ const ParkingMapEditor = () => {
         }
       } catch (err) {
         console.error('Failed to load map on mount:', err);
+      } finally {
+        setIsLoadingMap(false);
       }
-    };
+  };
 
-    loadMapData();
+  React.useEffect(() => {
+    fetchMapData();
   }, []);
 
   React.useEffect(() => {
@@ -285,15 +289,15 @@ const ParkingMapEditor = () => {
           standaloneSlots: floor.standaloneSlots.map((slot) =>
             slot.sensorId && slot.sensorId === sensorId
               ? {
-                  ...slot,
-                  status:
-                    slot.status === 'reserved' || slot.status === 'inactive'
-                      ? slot.status
-                      : sensorStatus
-                        ? 'occupied'
-                        : 'available',
-                  sensorStatus: sensorStatus ? 'online' : 'offline',
-                }
+                ...slot,
+                status:
+                  slot.status === 'reserved' || slot.status === 'inactive'
+                    ? slot.status
+                    : sensorStatus
+                      ? 'occupied'
+                      : 'available',
+                sensorStatus: sensorStatus ? 'online' : 'offline',
+              }
               : slot,
           ),
           zones: floor.zones.map((zone) => ({
@@ -303,15 +307,15 @@ const ParkingMapEditor = () => {
               slots: group.slots.map((slot) =>
                 slot.sensorId && slot.sensorId === sensorId
                   ? {
-                      ...slot,
-                      status:
-                        slot.status === 'reserved' || slot.status === 'inactive'
-                          ? slot.status
-                          : sensorStatus
-                            ? 'occupied'
-                            : 'available',
-                      sensorStatus: sensorStatus ? 'online' : 'offline',
-                    }
+                    ...slot,
+                    status:
+                      slot.status === 'reserved' || slot.status === 'inactive'
+                        ? slot.status
+                        : sensorStatus
+                          ? 'occupied'
+                          : 'available',
+                    sensorStatus: sensorStatus ? 'online' : 'offline',
+                  }
                   : slot,
               ),
             })),
@@ -864,16 +868,23 @@ const ParkingMapEditor = () => {
     else if (selectedEntity.type === 'EXIT') handleUpdateExit(id, props);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!parkingCode?.trim()) {
       message.error('Parking code is required!');
       return;
     }
-    setIsSaving(true);
-    const hideLoading = message.loading('Saving...', 0);
 
-    try {
-      const requestBody = {
+    Modal.confirm({
+      title: 'Confirm Save',
+      content: 'Are you sure you want to save the parking map?',
+      okText: 'Save',
+      cancelText: 'Cancel',
+      onOk: async () => {
+        setIsSaving(true);
+        const hideLoading = message.loading('Saving...', 0);
+
+        try {
+          const requestBody = {
         code: parkingCode,
         name: parkingName,
         location: parkingLocation,
@@ -897,7 +908,7 @@ const ParkingMapEditor = () => {
             points: zone.points,
             groupSlots: (zone.slotGroups || []).map((group, gi) => ({
               code: group.code || `${zone.id}-GS${gi + 1}`,
-              nameGroupSlot: group.name || `Dãy ${gi + 1}`,
+              nameGroupSlot: group.name || `Row ${gi + 1}`,
               status: group.status ?? 0,
               color: group.color || zone.color || '#3b82f6',
               positionX: group.x,
@@ -978,6 +989,8 @@ const ParkingMapEditor = () => {
       await axiosClient.post(PARKING_API.UPDATE_MAP, requestBody);
       message.success('Map saved successfully!');
 
+      await fetchMapData();
+
       const mapData = {
         metadata: {
           version: '2.0',
@@ -1008,12 +1021,14 @@ const ParkingMapEditor = () => {
       console.error('Save error detail:', JSON.stringify(error.response?.data, null, 2));
       message.error(
         'Failed to save: ' +
-          (error.response?.data?.message || error.response?.data?.error || error.message),
+        (error.response?.data?.message || error.response?.data?.error || error.message),
       );
     } finally {
       hideLoading();
       setIsSaving(false);
     }
+      }
+    });
   };
 
   const handleClearAllSlots = () => {
@@ -1101,6 +1116,14 @@ const ParkingMapEditor = () => {
     setSelectedEntity(null);
   };
 
+  if (isLoadingMap) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', width: '100%', backgroundColor: '#f3f4f6' }}>
+        <Spin size="large" tip="Loading map data..." />
+      </div>
+    );
+  }
+
   if (!isEditorActive) {
     return <EmptyStateMap onCreate={() => setIsEditorActive(true)} />;
   }
@@ -1173,6 +1196,16 @@ const ParkingMapEditor = () => {
         </div>
 
         <div className="editor-canvas-area" style={{ position: 'relative' }}>
+          {isSaving && (
+            <div style={{
+              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: 'rgba(255, 255, 255, 0.7)',
+              zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'not-allowed'
+            }}>
+              <Spin size="large" tip="Saving map..." />
+            </div>
+          )}
           <EditorCanvas
             zones={zones}
             standaloneSlots={standaloneSlots}
@@ -1243,15 +1276,15 @@ const ParkingMapEditor = () => {
               (selectedEntity
                 ? null
                 : {
-                    parkingName,
-                    parkingCode,
-                    parkingLocation,
-                    parkingUnit,
-                    activeFloorLevel: activeFloor.level,
-                    floorStatus: activeFloor.status ?? 1,
-                    gridRealSize,
-                    status: parkingStatus,
-                  })
+                  parkingName,
+                  parkingCode,
+                  parkingLocation,
+                  parkingUnit,
+                  activeFloorLevel: activeFloor.level,
+                  floorStatus: activeFloor.status ?? 1,
+                  gridRealSize,
+                  status: parkingStatus,
+                })
             }
             selectedType={selectedEntity ? selectedEntity.type : 'PARKING_GLOBAL'}
             selectedEntity={selectedEntity}

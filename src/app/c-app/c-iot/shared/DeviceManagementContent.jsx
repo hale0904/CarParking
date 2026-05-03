@@ -149,7 +149,7 @@ const DeviceFormModal = ({
             </Form.Item>
             {pageConfig.showLinkedSlot && (
               <Form.Item name="slotId" label={t('iot.slotCodeOptional')}>
-                <Input placeholder={t('iot.enterSlotCode')} allowClear />
+                <Input placeholder={t('iot.enterSlotCode')} disabled />
               </Form.Item>
             )}
           </>
@@ -398,18 +398,18 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
     },
     pageConfig.showLinkedSlot
       ? {
-          title: t('iot.linkedSlot'),
-          dataIndex: 'slotId',
-          key: 'slotId',
-          render: (slotId) => {
-            if (!slotId) return <Text type="secondary">-</Text>;
-            const label =
-              typeof slotId === 'object'
-                ? slotId?.nameSlot || slotId?.code || String(slotId._id)
-                : slotId;
-            return <Tag color="green">{label}</Tag>;
-          },
-        }
+        title: t('iot.linkedSlot'),
+        dataIndex: 'slotId',
+        key: 'slotId',
+        render: (slotId) => {
+          if (!slotId) return <Text type="secondary">-</Text>;
+          const label =
+            typeof slotId === 'object'
+              ? slotId?.nameSlot || slotId?.code || String(slotId._id)
+              : slotId;
+          return <Tag color="green">{label}</Tag>;
+        },
+      }
       : null,
     {
       title: t('common.status'),
@@ -547,19 +547,21 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
         </Text>
       </Space>
 
-      <Table
-        columns={columns}
-        dataSource={filteredDevices}
-        rowKey="_id"
-        scroll={{ x: 900 }}
-        pagination={{
-          pageSize: 5,
-          showSizeChanger: true,
-          showTotal: (total) => t('iot.devicesCount', { total }),
-        }}
-        loading={loading}
-        locale={{ emptyText: t('iot.noEntitiesFound', { entity: pageConfig.entityName.toLowerCase() }) }}
-      />
+      <div style={{ minHeight: '450px' }}>
+        <Table
+          columns={columns}
+          dataSource={filteredDevices}
+          rowKey={(record) => record._id || record.code}
+          scroll={{ x: 900 }}
+          pagination={{
+            pageSize: 5,
+            showSizeChanger: true,
+            showTotal: (total) => t('iot.devicesCount', { total }),
+          }}
+          loading={loading}
+          locale={{ emptyText: t('iot.noEntitiesFound', { entity: pageConfig.entityName.toLowerCase() }) }}
+        />
+      </div>
 
       <DeviceFormModal
         open={formModalOpen}

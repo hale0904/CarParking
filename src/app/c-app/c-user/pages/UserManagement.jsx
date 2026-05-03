@@ -16,6 +16,7 @@ import {
   Tag,
   Typography,
   notification,
+  Badge,
 } from 'antd';
 import {
   CalendarOutlined,
@@ -88,7 +89,8 @@ const UserManagement = () => {
         (user.userName && user.userName.toLowerCase().includes(lowerSearch)) ||
         (user.code && user.code.toLowerCase().includes(lowerSearch)) ||
         (user.email && user.email.toLowerCase().includes(lowerSearch)) ||
-        (user.phone && String(user.phone).includes(lowerSearch)),
+        (user.phone && String(user.phone).includes(lowerSearch)) ||
+        (user.vehicles && user.vehicles.some((v) => v.licensePlate && v.licensePlate.toLowerCase().includes(lowerSearch)))
     );
   }, [users, searchText]);
 
@@ -105,7 +107,7 @@ const UserManagement = () => {
 
   const columns = [
     {
-      title: t('users.name'),
+      title: t('users.name') || 'Tên',
       dataIndex: 'userName',
       key: 'userName',
       sorter: (a, b) => String(a.userName || '').localeCompare(String(b.userName || '')),
@@ -116,44 +118,67 @@ const UserManagement = () => {
             src={`https://api.dicebear.com/7.x/notionists/svg?seed=${record.code || record._id}`}
             style={{ backgroundColor: '#f0f0f0', border: '1px solid #d9d9d9' }}
           />
-          <Text strong style={{ fontSize: 15 }}>{text || t('common.notAvailable')}</Text>
+          <Space direction="vertical" size={0}>
+            <Text strong style={{ fontSize: 15 }}>{text || t('common.notAvailable')}</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>{record.code}</Text>
+          </Space>
         </Space>
       ),
     },
     {
-      title: t('users.role'),
-      dataIndex: 'role',
-      key: 'role',
-      filters: [
-        { text: t('common.admin'), value: 'admin' },
-        { text: t('users.users'), value: 'user' },
-      ],
-      onFilter: (value, record) => (record.role || 'user').toLowerCase() === value,
-      render: (role) => {
-        const normalizedRole = role || 'user';
-        const isUser = normalizedRole.toLowerCase() === 'user';
+      title: 'Thông tin liên hệ',
+      key: 'contact',
+      render: (_, record) => (
+        <Space direction="vertical" size={2}>
+          {record.phone ? (
+            <Space size={8}>
+              <PhoneOutlined style={{ color: '#8c8c8c' }} />
+              <Text>{record.phone}</Text>
+            </Space>
+          ) : null}
+          {record.email ? (
+            <Space size={8}>
+              <MailOutlined style={{ color: '#8c8c8c' }} />
+              <Text type="secondary">{record.email}</Text>
+            </Space>
+          ) : null}
+          {!record.phone && !record.email && <Text type="secondary">{t('common.notAvailable')}</Text>}
+        </Space>
+      ),
+    },
+    {
+      title: 'Biển số xe',
+      key: 'licensePlates',
+      render: (_, record) => (
+        <Space wrap>
+          {record.vehicles && record.vehicles.length > 0 ? (
+            record.vehicles.map((v) => (
+              <Tag key={v._id || v.licensePlate} color="blue" style={{ fontWeight: 500 }}>
+                {v.licensePlate}
+              </Tag>
+            ))
+          ) : (
+            <Text type="secondary">-</Text>
+          )}
+        </Space>
+      ),
+    },
+    {
+      title: 'Trạng thái',
+      key: 'status',
+      render: (_, record) => {
+        const isActive = record.status === undefined || record.status === 1 || record.status === 'Active';
         return (
-          <Tag
-            icon={isUser ? <UserOutlined /> : <CrownOutlined />}
-            color={isUser ? 'blue' : 'gold'}
-            style={{ padding: '4px 10px', borderRadius: '4px', textTransform: 'capitalize', fontWeight: 500 }}
-          >
-            {normalizedRole}
-          </Tag>
+          <Badge
+            status={isActive ? 'success' : 'error'}
+            text={
+              <span style={{ color: isActive ? '#52c41a' : '#f5222d', fontWeight: 500 }}>
+                {isActive ? 'Active' : 'Inactive'}
+              </span>
+            }
+          />
         );
       },
-    },
-    {
-      title: t('users.joinedAt'),
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      sorter: (a, b) => dayjs(a.createdAt).valueOf() - dayjs(b.createdAt).valueOf(),
-      render: (date) => (
-        <Space size={6}>
-          <CalendarOutlined style={{ color: '#8c8c8c' }} />
-          <Text>{date ? dayjs(date).format('DD/MM/YYYY HH:mm') : t('common.notAvailable')}</Text>
-        </Space>
-      ),
     },
   ];
 
@@ -239,7 +264,7 @@ const UserManagement = () => {
 
       <Card
         bordered={false}
-        style={{ borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}
+        style={{ borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', minHeight: '600px' }}
         bodyStyle={{ padding: '24px' }}
       >
         <div
@@ -268,7 +293,7 @@ const UserManagement = () => {
         <Table
           columns={columns}
           dataSource={filteredUsers}
-          rowKey="_id"
+          rowKey={(record) => record._id || record.code}
           loading={loading}
           onRow={(record) => ({
             onClick: () => {
@@ -374,9 +399,7 @@ const UserManagement = () => {
                             <CarOutlined style={{ color: '#1677ff' }} />
                             <Text strong>{vehicle.nameVehicles || vehicle.code || t('common.notAvailable')}</Text>
                           </Space>
-                          <Tag color={getVehicleStatusColor(vehicle.status)}>
-                            {vehicle.statusName || t('users.unknown')}
-                          </Tag>
+
                         </Space>
                         <Text type="secondary">{t('users.code')}: {vehicle.code || t('common.notAvailable')}</Text>
                         <Text>{t('users.licensePlate')}: {vehicle.licensePlate || t('common.notAvailable')}</Text>

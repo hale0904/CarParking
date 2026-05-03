@@ -21,7 +21,8 @@ export const attachRefreshInterceptor = (axiosInstance) => {
     async (error) => {
       const originalRequest = error.config;
 
-      if (error.response?.status === 401 && !originalRequest._retry && !originalRequest._isRefreshRequest) {
+      const isLoginRequest = originalRequest.url && (originalRequest.url.includes('/login') || originalRequest.url.includes('auth/login'));
+      if (error.response?.status === 401 && !originalRequest._retry && !originalRequest._isRefreshRequest && !isLoginRequest) {
         if (isRefreshing) {
           return new Promise((resolve, reject) => {
             queue.push({ resolve, reject });

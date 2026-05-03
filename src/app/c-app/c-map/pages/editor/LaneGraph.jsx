@@ -127,7 +127,7 @@ const LaneGraph = ({
           <Text
             x={midX + 4 / scale}
             y={midY - w / 2 - 16 / scale}
-            text={`${realLen}${parkingUnit}  W:${((w / GRID_SIZE) * gridRealSize).toFixed(1)}${parkingUnit}  [Chuột phải: xóa]`}
+            text={`${realLen}${parkingUnit}  W:${((w / GRID_SIZE) * gridRealSize).toFixed(1)}${parkingUnit}  [Right-click: Delete]`}
             fontSize={Math.max(10, 12 / scale)}
             fill="#1e40af"
             listening={false}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Empty, Form, Input, InputNumber, Select, Button, Tag, Typography, ColorPicker, message } from 'antd';
-import { ReloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { ReloadOutlined, InfoCircleOutlined, CloseCircleFilled } from '@ant-design/icons';
 
 import axiosClient from '../../../../c-lib/axios/axiosClient.service';
 import { PARKING_API } from '../../../../c-lib/api/parking.api';
@@ -8,10 +8,10 @@ import { PARKING_API } from '../../../../c-lib/api/parking.api';
 const { Title, Text } = Typography;
 const { Option } = Select;
 const SLOT_STATUS_OPTIONS = [
-    { value: 'available', label: 'Vị trí trống' },
-    { value: 'occupied', label: 'Vị trí có xe' },
-    { value: 'reserved', label: 'Vị trí đặt trước' },
-    { value: 'inactive', label: 'Vị trí lỗi/ Vị trí đang chỉnh sửa' },
+    { value: 'available', label: 'Available' },
+    { value: 'occupied', label: 'Occupied' },
+    { value: 'reserved', label: 'Reserved' },
+    { value: 'inactive', label: 'Error / Editing' },
 ];
 
 const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onUpdate, onUpdateGroupedSlot, onUpdateSlot, onCycleStatus, onDelete, assignedSensorIds = [], sensors = [] }) => {
@@ -91,18 +91,22 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                                     </Option>
                                 ))}
                             </Select>
-                            <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>Trạng thái cập nhật tự động từ cảm biến IoT</div>
+                            <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>Status is updated automatically from IoT sensors</div>
                         </Form.Item>
 
                         <Form.Item label="IoT Sensor" style={{ marginBottom: '8px' }}>
                             <Select
                                 showSearch
-                                value={selectedData.sensorCode || ''} // sensorCode
-                                placeholder="-- Chọn sensor --"
+                                allowClear
+                                clearIcon={<CloseCircleFilled style={{ color: '#ff4d4f' }} />}
+                                showArrow={!selectedData.sensorCode}
+                                disabled={selectedData.status !== 'inactive'}
+                                value={selectedData.sensorCode || undefined} // sensorCode
+                                placeholder="-- Select sensor --"
                                 optionFilterProp="children"
                                 optionLabelProp="label"
                                 onChange={async (val) => {
-                                    const newVal = val === '' ? null : val;
+                                    const newVal = val || null;
                                     const oldSensorCode = selectedData.sensorCode; // sensorCode
                                     const updates = { sensorCode: newVal }; // sensorCode
 
@@ -140,7 +144,7 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                                 }}
                                 style={{ width: '100%' }}
                             >
-                                <Option value="">-- Chọn sensor --</Option>
+
                                 {sensors
                                     .filter(sensor =>
                                         // Hiển thị nếu: chưa được assign cho ai
@@ -169,6 +173,7 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                                         style={{ width: '100%' }}
                                         value={selectedData.x}
                                         onChange={(val) => handleChange('x', val)}
+                                        disabled={selectedData.status !== 'inactive'}
                                     />
                                 </Form.Item>
                                 <Form.Item label="Y Position" style={{ flex: 1 }}>
@@ -176,6 +181,7 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                                         style={{ width: '100%' }}
                                         value={selectedData.y}
                                         onChange={(val) => handleChange('y', val)}
+                                        disabled={selectedData.status !== 'inactive'}
                                     />
                                 </Form.Item>
                             </div>
@@ -196,6 +202,7 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                             <Input
                                 value={selectedData.parkingName}
                                 onChange={(e) => handleChange('parkingName', e)}
+                                disabled={selectedData.status !== 0}
                             />
                         </Form.Item>
                         <Form.Item label="Status">
@@ -213,13 +220,15 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                                 value={selectedData.parkingCode}
                                 onChange={(e) => handleChange('parkingCode', e)}
                                 placeholder="e.g. PK001"
+                                disabled={selectedData.status !== 0}
                             />
                         </Form.Item>
                         <Form.Item label="Location">
                             <Input
                                 value={selectedData.parkingLocation}
                                 onChange={(e) => handleChange('parkingLocation', e)}
-                                placeholder="e.g. Phường 8, TP HCM"
+                                placeholder="e.g. Ward 8, HCMC"
+                                disabled={selectedData.status !== 0}
                             />
                         </Form.Item>
 
@@ -239,6 +248,8 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                                 value={selectedData.activeFloorLevel}
                                 onChange={(val) => handleChange('activeFloorLevel', val)}
                                 placeholder="e.g. -1 for B1, 1 for ground"
+                                disabled={selectedData.floorStatus !== 0}
+                                min={selectedData.activeFloorLevel}
                             />
                         </Form.Item>
                         <Form.Item label="Floor Status">
@@ -255,6 +266,7 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                             <Select
                                 value={selectedData.parkingUnit}
                                 onChange={(val) => handleChange('parkingUnit', val)}
+                                disabled={selectedData.status !== 0}
                             >
                                 <Option value="m">Meters (m)</Option>
                                 <Option value="ft">Feet (ft)</Option>
@@ -268,6 +280,7 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                                 placeholder="e.g. 2.5"
                                 step={0.1}
                                 min={0.1}
+                                disabled={selectedData.status !== 0}
                             />
                         </Form.Item>
                     </>
@@ -289,6 +302,8 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                                     <Input
                                         value={selectedData.name}
                                         onChange={(e) => handleChange('name', e)}
+                                        readOnly={selectedData.status !== 0}
+                                        style={{ backgroundColor: selectedData.status !== 0 ? '#f5f5f5' : undefined, color: selectedData.status !== 0 ? '#bfbfbf' : undefined }}
                                     />
                                 </Form.Item>
                                 <Form.Item label="Color">
@@ -299,6 +314,7 @@ const EditorPropertiesPanel = ({ selectedData, selectedType, selectedEntity, onU
                                             handleChange('color', hexString);
                                         }}
                                         showText
+                                        disabled={selectedData.status !== 0}
                                     />
                                 </Form.Item>
                             </>

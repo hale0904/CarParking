@@ -25,14 +25,14 @@ function Login001() {
 
       notification.success({
         message: 'Welcome Back!',
-        description: 'Đăng nhập thành công vào hệ thống Smart Parking.',
+        description: 'Successfully logged into Smart Parking system.',
         placement: 'topRight',
       });
       navigate('/admin/dashboard');
     } catch (err) {
       notification.error({
-        message: 'Đăng nhập thất bại',
-        description: err?.response?.data?.message || 'Vui lòng kiểm tra lại thông tin đăng nhập.',
+        message: 'Login Failed',
+        description: err?.response?.data?.message || 'Please check your credentials and try again.',
         placement: 'topRight',
       });
     } finally {
@@ -82,8 +82,8 @@ function Login001() {
               <div className="form-inner">
                 <div className="form-header">
                   <img src={logo} alt="Smart Parking Logo" className="brand-logo" />
-                  <Title level={3} className="form-title">Đăng Nhập</Title>
-                  <Text type="secondary" className="form-desc">Vui lòng đăng nhập để truy cập Admin Dashboard.</Text>
+                  <Title level={3} className="form-title">Login</Title>
+                  <Text type="secondary" className="form-desc">Please log in to access the Admin Dashboard.</Text>
                 </div>
 
                 <Form
@@ -95,8 +95,8 @@ function Login001() {
                 >
                   <Form.Item
                     name="email"
-                    label="Tên Đăng Nhập"
-                    rules={[{ required: true, message: 'Vui lòng nhập tên đăng nhập!' }]}
+                    label="Username"
+                    rules={[{ required: true, message: 'Please enter your username!' }]}
                   >
                     <Input
                       variant="filled"
@@ -108,8 +108,8 @@ function Login001() {
 
                   <Form.Item
                     name="password"
-                    label="Mật Khẩu"
-                    rules={[{ required: true, message: 'Vui lòng nhập mật khẩu!' }]}
+                    label="Password"
+                    rules={[{ required: true, message: 'Please enter your password!' }]}
                   >
                     <Input.Password
                       variant="filled"
@@ -127,13 +127,13 @@ function Login001() {
                       loading={loading}
                       block
                     >
-                      Tiếp Tục <RightOutlined className="submit-icon" />
+                      Continue <RightOutlined className="submit-icon" />
                     </Button>
                   </Form.Item>
                 </Form>
 
                 <div className="form-footer">
-                  <Text type="secondary">Quên mật khẩu? Vui lòng liên hệ IT Support.</Text>
+                  <Text type="secondary">Forgot password? Please contact IT Support.</Text>
                 </div>
               </div>
             </div>

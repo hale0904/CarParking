@@ -38,7 +38,7 @@ const EditorTopBar = ({ parkingName = "New Parking Map", onSave, onCancel, isSav
 
             {/* Right: Actions */}
             <div className="top-bar-right">
-                <Tooltip title="Cancel modifications">
+                {/* <Tooltip title="Cancel modifications">
                     <Button
                         icon={<StopOutlined />}
                         onClick={onCancel}
@@ -54,7 +54,7 @@ const EditorTopBar = ({ parkingName = "New Parking Map", onSave, onCancel, isSav
 
                 <Tooltip title="Preview Map (Coming Soon)">
                     <Button icon={<EyeOutlined />} disabled />
-                </Tooltip>
+                </Tooltip> */}
 
                 <Button
                     type="primary"
