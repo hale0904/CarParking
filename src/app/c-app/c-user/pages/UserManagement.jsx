@@ -31,6 +31,7 @@ import {
 import dayjs from 'dayjs';
 import axiosClient from '../../../c-lib/axios/axiosClient.service';
 import { USER_API } from '../../../c-lib/api/user.api';
+import { useAdminI18n } from '../../../c-lib/i18n/adminI18n';
 
 const { Title, Text } = Typography;
 
@@ -46,6 +47,7 @@ const formatPhoneNumber = (phone) => {
 };
 
 const UserManagement = () => {
+  const { t } = useAdminI18n();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -60,13 +62,13 @@ const UserManagement = () => {
         setUsers(response.data || []);
       } else {
         notification.error({
-          message: 'Failed to load user list',
-          description: response?.message || 'Unknown server error.',
+          message: t('users.failedToLoadUserList'),
+          description: response?.message || t('users.unknownServerError'),
         });
       }
     } catch (error) {
       notification.error({
-        message: 'Failed to load user list',
+        message: t('users.failedToLoadUserList'),
         description: error.message,
       });
     } finally {
@@ -103,7 +105,7 @@ const UserManagement = () => {
 
   const columns = [
     {
-      title: 'Name',
+      title: t('users.name'),
       dataIndex: 'userName',
       key: 'userName',
       sorter: (a, b) => String(a.userName || '').localeCompare(String(b.userName || '')),
@@ -114,17 +116,17 @@ const UserManagement = () => {
             src={`https://api.dicebear.com/7.x/notionists/svg?seed=${record.code || record._id}`}
             style={{ backgroundColor: '#f0f0f0', border: '1px solid #d9d9d9' }}
           />
-          <Text strong style={{ fontSize: 15 }}>{text || 'N/A'}</Text>
+          <Text strong style={{ fontSize: 15 }}>{text || t('common.notAvailable')}</Text>
         </Space>
       ),
     },
     {
-      title: 'Role',
+      title: t('users.role'),
       dataIndex: 'role',
       key: 'role',
       filters: [
-        { text: 'Admin', value: 'admin' },
-        { text: 'User', value: 'user' },
+        { text: t('common.admin'), value: 'admin' },
+        { text: t('users.users'), value: 'user' },
       ],
       onFilter: (value, record) => (record.role || 'user').toLowerCase() === value,
       render: (role) => {
@@ -142,14 +144,14 @@ const UserManagement = () => {
       },
     },
     {
-      title: 'Joined At',
+      title: t('users.joinedAt'),
       dataIndex: 'createdAt',
       key: 'createdAt',
       sorter: (a, b) => dayjs(a.createdAt).valueOf() - dayjs(b.createdAt).valueOf(),
       render: (date) => (
         <Space size={6}>
           <CalendarOutlined style={{ color: '#8c8c8c' }} />
-          <Text>{date ? dayjs(date).format('DD/MM/YYYY HH:mm') : 'N/A'}</Text>
+          <Text>{date ? dayjs(date).format('DD/MM/YYYY HH:mm') : t('common.notAvailable')}</Text>
         </Space>
       ),
     },
@@ -176,10 +178,10 @@ const UserManagement = () => {
         >
           <div>
             <Title level={3} style={{ margin: 0, fontWeight: 600 }}>
-              User Management
+              {t('users.title')}
             </Title>
             <Text type="secondary" style={{ fontSize: 14 }}>
-              View and manage user accounts in the system
+              {t('users.subtitle')}
             </Text>
           </div>
           <Button
@@ -189,14 +191,14 @@ const UserManagement = () => {
             size="large"
             style={{ borderRadius: '6px' }}
           >
-            Refresh
+            {t('common.refresh')}
           </Button>
         </div>
 
         <Row gutter={[16, 16]}>
           <Col xs={12} sm={6}>
             <Card bordered={false} style={{ background: '#fafafa', borderRadius: '8px' }} bodyStyle={{ padding: '16px' }}>
-              <Text type="secondary">Total Users</Text>
+              <Text type="secondary">{t('users.totalUsers')}</Text>
               <Title level={2} style={{ margin: '8px 0 0 0', color: '#1677ff' }}>
                 {stats.total}
               </Title>
@@ -205,7 +207,7 @@ const UserManagement = () => {
           <Col xs={12} sm={6}>
             <Card bordered={false} style={{ background: '#fffbe6', borderRadius: '8px' }} bodyStyle={{ padding: '16px' }}>
               <Text type="secondary" style={{ color: '#d48806' }}>
-                Admins
+                {t('users.admins')}
               </Text>
               <Title level={2} style={{ margin: '8px 0 0 0', color: '#d4b106' }}>
                 {stats.admin}
@@ -215,7 +217,7 @@ const UserManagement = () => {
           <Col xs={12} sm={6}>
             <Card bordered={false} style={{ background: '#e6f4ff', borderRadius: '8px' }} bodyStyle={{ padding: '16px' }}>
               <Text type="secondary" style={{ color: '#0958d9' }}>
-                Users
+                {t('users.users')}
               </Text>
               <Title level={2} style={{ margin: '8px 0 0 0', color: '#1677ff' }}>
                 {stats.user}
@@ -225,7 +227,7 @@ const UserManagement = () => {
           <Col xs={12} sm={6}>
             <Card bordered={false} style={{ background: '#f6ffed', borderRadius: '8px' }} bodyStyle={{ padding: '16px' }}>
               <Text type="secondary" style={{ color: '#389e0d' }}>
-                New This Month
+                {t('users.newThisMonth')}
               </Text>
               <Title level={2} style={{ margin: '8px 0 0 0', color: '#52c41a' }}>
                 {stats.newThisMonth}
@@ -250,7 +252,7 @@ const UserManagement = () => {
           }}
         >
           <Input
-            placeholder="Search by name, code, email, or phone..."
+            placeholder={t('users.searchPlaceholder')}
             prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
@@ -259,7 +261,7 @@ const UserManagement = () => {
             allowClear
           />
           <Text type="secondary" style={{ lineHeight: '40px' }}>
-            Showing <b>{filteredUsers.length}</b> / {users.length} users
+            {t('users.showingUsers', { filtered: filteredUsers.length, total: users.length })}
           </Text>
         </div>
 
@@ -278,17 +280,17 @@ const UserManagement = () => {
           pagination={{
             pageSize: 10,
             showSizeChanger: true,
-            showTotal: (total) => `Total ${total} users`,
+            showTotal: (total) => t('users.totalUsersPagination', { total }),
             style: { marginTop: 24 },
           }}
-          locale={{ emptyText: 'No users found.' }}
+          locale={{ emptyText: t('users.noUsersFound') }}
           rowClassName="user-table-row"
           style={{ border: '1px solid #f0f0f0', borderRadius: '8px' }}
         />
       </Card>
 
       <Drawer
-        title="User Details"
+        title={t('users.userDetails')}
         placement="right"
         width={520}
         open={drawerOpen}
@@ -304,49 +306,51 @@ const UserManagement = () => {
               />
               <Space direction="vertical" size={2}>
                 <Title level={4} style={{ margin: 0 }}>
-                  {selectedUser.userName || 'N/A'}
+                  {selectedUser.userName || t('common.notAvailable')}
                 </Title>
                 <Space wrap>
                   <Tag color={(selectedUser.role || 'user').toLowerCase() === 'admin' ? 'gold' : 'blue'}>
                     {selectedUser.role || 'user'}
                   </Tag>
-                  <Tag color="processing">{(selectedUser.vehicles || []).length} vehicle(s)</Tag>
+                  <Tag color="processing">
+                    {t('users.vehiclesCount', { count: (selectedUser.vehicles || []).length })}
+                  </Tag>
                 </Space>
               </Space>
             </Space>
 
-            <Descriptions title="Basic Information" bordered column={1} size="middle" labelStyle={{ width: 160 }}>
-              <Descriptions.Item label="User Code">
+            <Descriptions title={t('users.basicInformation')} bordered column={1} size="middle" labelStyle={{ width: 160 }}>
+              <Descriptions.Item label={t('users.userCode')}>
                 <Space size={8}>
                   <IdcardOutlined />
-                  <span>{selectedUser.code || 'N/A'}</span>
+                  <span>{selectedUser.code || t('common.notAvailable')}</span>
                 </Space>
               </Descriptions.Item>
-              <Descriptions.Item label="Full Name">
+              <Descriptions.Item label={t('users.fullName')}>
                 <Space size={8}>
                   <UserOutlined />
-                  <span>{selectedUser.userName || 'N/A'}</span>
+                  <span>{selectedUser.userName || t('common.notAvailable')}</span>
                 </Space>
               </Descriptions.Item>
-              <Descriptions.Item label="Email">
+              <Descriptions.Item label={t('users.email')}>
                 <Space size={8}>
                   <MailOutlined />
-                  <span>{selectedUser.email || 'N/A'}</span>
+                  <span>{selectedUser.email || t('common.notAvailable')}</span>
                 </Space>
               </Descriptions.Item>
-              <Descriptions.Item label="Phone Number">
+              <Descriptions.Item label={t('users.phoneNumber')}>
                 <Space size={8}>
                   <PhoneOutlined />
                   <span>{formatPhoneNumber(selectedUser.phone)}</span>
                 </Space>
               </Descriptions.Item>
-              <Descriptions.Item label="Joined At">
+              <Descriptions.Item label={t('users.joinedAt')}>
                 <Space size={8}>
                   <CalendarOutlined />
                   <span>
                     {selectedUser.createdAt
                       ? dayjs(selectedUser.createdAt).format('DD/MM/YYYY HH:mm:ss')
-                      : 'N/A'}
+                      : t('common.notAvailable')}
                   </span>
                 </Space>
               </Descriptions.Item>
@@ -356,7 +360,7 @@ const UserManagement = () => {
 
             <div>
               <Title level={5} style={{ marginBottom: 12 }}>
-                Vehicles
+                {t('users.vehicles')}
               </Title>
               {(selectedUser.vehicles || []).length > 0 ? (
                 <List
@@ -368,24 +372,24 @@ const UserManagement = () => {
                         <Space style={{ justifyContent: 'space-between', width: '100%' }} align="start">
                           <Space size={8}>
                             <CarOutlined style={{ color: '#1677ff' }} />
-                            <Text strong>{vehicle.nameVehicles || vehicle.code || 'N/A'}</Text>
+                            <Text strong>{vehicle.nameVehicles || vehicle.code || t('common.notAvailable')}</Text>
                           </Space>
                           <Tag color={getVehicleStatusColor(vehicle.status)}>
-                            {vehicle.statusName || 'Unknown'}
+                            {vehicle.statusName || t('users.unknown')}
                           </Tag>
                         </Space>
-                        <Text type="secondary">Code: {vehicle.code || 'N/A'}</Text>
-                        <Text>License Plate: {vehicle.licensePlate || 'N/A'}</Text>
+                        <Text type="secondary">{t('users.code')}: {vehicle.code || t('common.notAvailable')}</Text>
+                        <Text>{t('users.licensePlate')}: {vehicle.licensePlate || t('common.notAvailable')}</Text>
                         <Text type="secondary">
-                          Created At:{' '}
-                          {vehicle.createdAt ? dayjs(vehicle.createdAt).format('DD/MM/YYYY HH:mm') : 'N/A'}
+                          {t('users.createdAt')}:{' '}
+                          {vehicle.createdAt ? dayjs(vehicle.createdAt).format('DD/MM/YYYY HH:mm') : t('common.notAvailable')}
                         </Text>
                       </Space>
                     </List.Item>
                   )}
                 />
               ) : (
-                <Empty description="This user has no vehicles." />
+                <Empty description={t('users.noVehicles')} />
               )}
             </div>
           </Space>

@@ -13,6 +13,7 @@ const ZonePolygon = ({
     scale = 1,
     gridRealSize = 2.5,
     parkingUnit = 'm',
+    readOnly = false,
     onDragVertex,
     onVertexClick,
     onDragMove,
@@ -53,7 +54,7 @@ const ZonePolygon = ({
 
     return (
         <Group
-            draggable={!isDrawing && closed}
+            draggable={!readOnly && !isDrawing && closed}
             onDragMove={onDragMove}
             onDragEnd={onDragEnd}
             onClick={onClick}
@@ -71,17 +72,17 @@ const ZonePolygon = ({
                 lineJoin="round"
                 // Pass events through line when drawing to click on stage
                 // but enable when closed to select it
-                listening={closed}
+                listening={!readOnly && closed}
             />
 
             {/* Vertices */}
             {vertices.map((v, i) => {
                 const isFirst = i === 0;
                 // Vertices are draggable only if polygon is closed and it is selected (edit mode)
-                const isDraggable = closed && isSelected;
+                const isDraggable = !readOnly && closed && isSelected;
 
                 // Allow closing by clicking first point
-                const isInteractive = isDraggable || (isDrawing && isFirst && canClose);
+                const isInteractive = !readOnly && (isDraggable || (isDrawing && isFirst && canClose));
                 const isHovered = hoveredVertexIndex === i;
 
                 return (
@@ -138,7 +139,7 @@ const ZonePolygon = ({
                             points={[x1, y1, x2, y2]}
                             stroke="transparent"
                             strokeWidth={15}
-                            listening={true}
+                            listening={!readOnly}
                             onMouseEnter={(e) => handleEdgeHover(e, i, x1, y1, x2, y2)}
                             onMouseLeave={() => setHoveredEdge(null)}
                         />

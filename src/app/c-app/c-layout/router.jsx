@@ -3,7 +3,7 @@ import { statisticsRoutes } from '../c-statics/router';
 import LayoutDefault from './layout-default/LayoutAdmin';
 import { dashboardRoutes } from '../c-dashboard/router';
 import { deviceRoutes } from '../c-iot/router';
-import { barrierRoutes } from '../c-barrier/router';
+// import { barrierRoutes } from '../c-barrier/router';
 import { userRoutes } from '../c-user/router';
 import PrivateLayout from '../../../routers/privateRoute';
 
@@ -14,7 +14,14 @@ export const layoutRoutes = [
       {
         path: '/admin',
         element: <LayoutDefault />,
-        children: [...mapRoutes, ...statisticsRoutes, ...dashboardRoutes, ...deviceRoutes, ...barrierRoutes, ...userRoutes],
+        children: [
+          ...mapRoutes,
+          ...statisticsRoutes,
+          ...dashboardRoutes,
+          ...deviceRoutes,
+          // ...barrierRoutes,
+          ...userRoutes,
+        ],
       }
     ]
   },

@@ -44,6 +44,7 @@ import {
 } from '../../../../c-lib/api';
 import EditorCanvas from '../../../c-map/pages/editor/EditorCanvas';
 import { io } from 'socket.io-client';
+import { useAdminI18n } from '../../../../c-lib/i18n/adminI18n';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -231,11 +232,13 @@ const FloorMapView = ({ floor, metadata }) => {
       onFinishZone={() => {}}
       gridRealSize={metadata?.gridRealSize || 2.5}
       parkingUnit={metadata?.unit || 'm'}
+      readOnly
     />
   );
 };
 
 const DashboardPage = () => {
+  const { t } = useAdminI18n();
   const socketRef = useRef(null);
   const [mapData, setMapData] = useState(null);
   const [statsData, setStatsData] = useState(null);
@@ -330,7 +333,7 @@ const DashboardPage = () => {
         };
         setMapData(mapped);
       } catch (err) {
-        message.error('Failed to load map: ' + err.message);
+        message.error(t('dashboard.failedToLoadMap', { message: err.message }));
       } finally {
         setIsLoading(false);
       }
@@ -372,7 +375,7 @@ const DashboardPage = () => {
         });
       } catch (err) {
         message.error(
-          err?.response?.data?.message || err.message || 'Failed to load statistical data',
+          err?.response?.data?.message || err.message || t('dashboard.failedToLoadStatisticalData'),
         );
       } finally {
         setStatsLoading(false);
@@ -396,7 +399,7 @@ const DashboardPage = () => {
         setTurnoverData(res?.data || null);
       } catch (err) {
         message.error(
-          err?.response?.data?.message || err.message || 'Failed to load turnover data',
+          err?.response?.data?.message || err.message || t('dashboard.failedToLoadTurnoverData'),
         );
       } finally {
         setTurnoverLoading(false);
@@ -422,7 +425,7 @@ const DashboardPage = () => {
         const res = await axiosClient.post(REVENUE_API.GET_REVENUE, payload);
         setRevenueData(res?.data || null);
       } catch (err) {
-        message.error(err?.response?.data?.message || err.message || 'Failed to load revenue data');
+        message.error(err?.response?.data?.message || err.message || t('dashboard.failedToLoadRevenueData'));
       } finally {
         setRevenueLoading(false);
       }
@@ -494,7 +497,9 @@ const DashboardPage = () => {
 
   const totalDisplay = statsData?.totalSlots ?? allSlotsGlobal.length;
   const selectedZoneLabel =
-    selectedZoneIds.length > 0 ? `${selectedZoneIds.length} zone selected` : 'All zones';
+    selectedZoneIds.length > 0
+      ? t('dashboard.selectedZones', { count: selectedZoneIds.length })
+      : t('common.allZones');
   const turnoverPercent =
     typeof turnoverData?.turnover === 'number' ? turnoverData.turnover * 100 : 0;
   const zoneStatsPreview = useMemo(() => (statsData?.zones || []).slice(0, 4), [statsData]);
@@ -555,17 +560,15 @@ const DashboardPage = () => {
     const config = EXPORT_FORMAT_CONFIG[format];
     if (!config) return;
     if (!statisticalRange || statisticalRange.length !== 2) {
-      message.warning('Please select a valid statistical time range before exporting.');
+      message.warning(t('dashboard.invalidStatisticalRange'));
       return;
     }
     if (statsLoading) {
-      message.info('Statistical data is still loading. Please wait a moment and try again.');
+      message.info(t('dashboard.statsStillLoading'));
       return;
     }
     if (statsData && (!statsData.zones || statsData.zones.length === 0)) {
-      message.warning(
-        'No statistical data is available for the current filters, so the report cannot be exported.',
-      );
+      message.warning(t('dashboard.noStatsToExport'));
       return;
     }
 
@@ -601,7 +604,7 @@ const DashboardPage = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      message.success(config.successMessage);
+      message.success(format === 'pdf' ? t('dashboard.exportedParkingPdf') : t('dashboard.exportedParkingExcel'));
     } catch (err) {
       const errorMessage = await parseBlobErrorMessage(err);
       message.error(translateExportErrorMessage(errorMessage));
@@ -612,7 +615,7 @@ const DashboardPage = () => {
 
   const handleExportCsv = () => {
     if (statsLoading || turnoverLoading || revenueLoading) {
-      message.info('Dashboard data is still loading. Please wait a moment and try again.');
+      message.info(t('dashboard.dashboardDataStillLoading'));
       return;
     }
 
@@ -663,23 +666,23 @@ const DashboardPage = () => {
     link.click();
     link.remove();
     window.URL.revokeObjectURL(url);
-    message.success('Exported dashboard report as CSV');
+    message.success(t('dashboard.exportedDashboardCsv'));
   };
 
   return (
     <Spin spinning={isLoading}>
       <div style={{ padding: 24, background: '#f0f2f5', minHeight: '100vh' }}>
-        <Title level={4}>Dashboard</Title>
+        <Title level={4}>{t('dashboard.title')}</Title>
 
         <Card style={{ marginBottom: 16, borderRadius: 10 }} bordered={false}>
           <Row gutter={[16, 16]} align="middle">
             <Col xs={24} md={8}>
               <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                <Text strong>Zone Filter</Text>
+                <Text strong>{t('dashboard.zoneFilter')}</Text>
                 <Select
                   mode="multiple"
                   allowClear
-                  placeholder="All zones"
+                  placeholder={t('common.allZones')}
                   value={selectedZoneIds}
                   onChange={setSelectedZoneIds}
                   options={zoneOptions}
@@ -691,7 +694,7 @@ const DashboardPage = () => {
             </Col>
             <Col xs={24} md={8}>
               <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                <Text strong>Statistical Window</Text>
+                <Text strong>{t('dashboard.statisticalWindow')}</Text>
                 <RangePicker
                   showTime
                   value={statisticalRange}
@@ -702,7 +705,7 @@ const DashboardPage = () => {
             </Col>
             <Col xs={24} md={8}>
               <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                <Text strong>Turnover Range</Text>
+                <Text strong>{t('dashboard.turnoverRange')}</Text>
                 <RangePicker
                   value={turnoverRange}
                   onChange={(value) => value && setTurnoverRange(value)}
@@ -716,7 +719,7 @@ const DashboardPage = () => {
                   icon={<FileExcelOutlined />}
                   onClick={handleExportCsv}
                 >
-                  Export CSV
+                  {t('dashboard.exportCsv')}
                 </Button>
                 <Button
                   type="primary"
@@ -724,7 +727,7 @@ const DashboardPage = () => {
                   onClick={() => handleExportReport('pdf')}
                   loading={exportLoading === 'pdf'}
                 >
-                  Export PDF
+                  {t('dashboard.exportPdf')}
                 </Button>
               </Space>
             </Col>
@@ -734,7 +737,7 @@ const DashboardPage = () => {
         <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
           <Col xs={24} xl={10}>
             <Card
-              title={<span style={{ color: 'white', fontSize: 14 }}>Status Overview</span>}
+              title={<span style={{ color: 'white', fontSize: 14 }}>{t('dashboard.statusOverview')}</span>}
               style={{
                 background: '#1a1a2e',
                 borderRadius: 10,
@@ -782,7 +785,7 @@ const DashboardPage = () => {
                       >
                         {totalDisplay}
                       </div>
-                      <div style={{ fontSize: 12, color: '#d9d9d9' }}>Total slot</div>
+                      <div style={{ fontSize: 12, color: '#d9d9d9' }}>{t('dashboard.totalSlot')}</div>
                     </div>
                   </div>
 
@@ -817,13 +820,13 @@ const DashboardPage = () => {
                   <Divider style={{ borderColor: '#333', margin: '16px 0' }} />
                   <Row gutter={[12, 12]} style={{ width: '100%' }}>
                     <Col span={12}>
-                      <Text style={{ color: '#d9d9d9' }}>Avg Empty %</Text>
+                      <Text style={{ color: '#d9d9d9' }}>{t('dashboard.avgEmpty')}</Text>
                       <div style={{ color: 'white', fontSize: 20, fontWeight: 600 }}>
                         {(statsData?.averageEmptyPercent || 0).toFixed(1)}%
                       </div>
                     </Col>
                     <Col span={12}>
-                      <Text style={{ color: '#d9d9d9' }}>Avg Used %</Text>
+                      <Text style={{ color: '#d9d9d9' }}>{t('dashboard.avgUsed')}</Text>
                       <div style={{ color: 'white', fontSize: 20, fontWeight: 600 }}>
                         {(statsData?.averageUsedPercent || 0).toFixed(1)}%
                       </div>
@@ -842,7 +845,7 @@ const DashboardPage = () => {
             <Row gutter={[16, 16]}>
               <Col xs={24} md={12}>
                 <Card
-                  title="Turnover"
+                  title={t('dashboard.turnover')}
                   style={{ borderRadius: 10, height: '100%' }}
                   bordered={false}
                   extra={
@@ -854,7 +857,9 @@ const DashboardPage = () => {
                   <Spin spinning={turnoverLoading}>
                     <div style={{ marginBottom: 8 }}>
                       <Text type="secondary">
-                        Overall turnover: {(Number.isFinite(turnoverPercent) ? turnoverPercent : 0).toFixed(2)}%
+                        {t('dashboard.overallTurnover', {
+                          value: (Number.isFinite(turnoverPercent) ? turnoverPercent : 0).toFixed(2),
+                        })}
                       </Text>
                     </div>
                     <div style={{ width: '100%', height: 220 }}>
@@ -866,12 +871,12 @@ const DashboardPage = () => {
                           <YAxis yAxisId="right" orientation="right" />
                           <Tooltip />
                           <Legend />
-                          <Bar yAxisId="left" dataKey="sessions" fill="#1677ff" name="Sessions" />
+                          <Bar yAxisId="left" dataKey="sessions" fill="#1677ff" name={t('dashboard.sessions')} />
                           <Bar
                             yAxisId="right"
                             dataKey="turnoverRate"
                             fill="#52c41a"
-                            name="Turnover Rate (%)"
+                            name={t('dashboard.turnoverRate')}
                           />
                         </BarChart>
                       </ResponsiveContainer>
@@ -881,7 +886,7 @@ const DashboardPage = () => {
               </Col>
               <Col xs={24} md={12}>
                 <Card
-                  title="Revenue"
+                  title={t('dashboard.revenue')}
                   style={{ borderRadius: 10, height: '100%' }}
                   bordered={false}
                   extra={
@@ -889,9 +894,9 @@ const DashboardPage = () => {
                       value={revenueType}
                       onChange={setRevenueType}
                       options={[
-                        { label: 'Today', value: 'day' },
-                        { label: 'This Month', value: 'month' },
-                        { label: 'Custom', value: 'custom' },
+                        { label: t('dashboard.today'), value: 'day' },
+                        { label: t('dashboard.thisMonth'), value: 'month' },
+                        { label: t('dashboard.custom'), value: 'custom' },
                       ]}
                       style={{ width: 130 }}
                     />
@@ -906,7 +911,7 @@ const DashboardPage = () => {
                           style={{ width: '100%' }}
                         />
                       )}
-                      <Text strong>Total Revenue: {formatCurrency(revenueData?.totalRevenue || 0)}</Text>
+                      <Text strong>{t('dashboard.totalRevenue', { value: formatCurrency(revenueData?.totalRevenue || 0) })}</Text>
                       <div style={{ width: '100%', height: 220 }}>
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart data={revenueSeriesData}>
@@ -925,7 +930,7 @@ const DashboardPage = () => {
                               stroke="#722ed1"
                               strokeWidth={2}
                               dot={{ r: 3 }}
-                              name="Revenue"
+                              name={t('dashboard.revenue')}
                             />
                           </LineChart>
                         </ResponsiveContainer>
@@ -935,7 +940,7 @@ const DashboardPage = () => {
                 </Card>
               </Col>
               <Col span={24}>
-                <Card title="Occupancy by Zone" style={{ borderRadius: 10 }} bordered={false}>
+                <Card title={t('dashboard.occupancyByZone')} style={{ borderRadius: 10 }} bordered={false}>
                   <div style={{ width: '100%', height: 280 }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={occupancyChartData}>
@@ -944,15 +949,15 @@ const DashboardPage = () => {
                         <YAxis />
                         <Tooltip />
                         <Legend />
-                        <Bar dataKey="available" fill="#52c41a" name="Available" />
-                        <Bar dataKey="occupied" fill="#595959" name="Occupied" />
+                        <Bar dataKey="available" fill="#52c41a" name={t('dashboard.available')} />
+                        <Bar dataKey="occupied" fill="#595959" name={t('dashboard.occupied')} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </Card>
               </Col>
               <Col span={24}>
-                <Card title="Zone Capacity Snapshot" style={{ borderRadius: 10 }} bordered={false}>
+                <Card title={t('dashboard.zoneCapacitySnapshot')} style={{ borderRadius: 10 }} bordered={false}>
                   <Row gutter={[12, 12]}>
                     {zoneStatsPreview.length > 0 ? (
                       zoneStatsPreview.map((zone) => (
@@ -965,16 +970,16 @@ const DashboardPage = () => {
                                 zone.zoneId}
                             </Text>
                             <div style={{ marginTop: 8 }}>
-                              <Text>Total: {zone.totalSlots || 0}</Text>
+                              <Text>{t('dashboard.totalSlots')}: {zone.totalSlots || 0}</Text>
                             </div>
                             <div>
                               <Text>
-                                Empty: {zone.empty || 0} ({(zone.percentEmpty || 0).toFixed(1)}%)
+                                {t('dashboard.available')}: {zone.empty || 0} ({(zone.percentEmpty || 0).toFixed(1)}%)
                               </Text>
                             </div>
                             <div>
                               <Text>
-                                Used: {zone.used || 0} ({(zone.percentUsed || 0).toFixed(1)}%)
+                                {t('dashboard.occupied')}: {zone.used || 0} ({(zone.percentUsed || 0).toFixed(1)}%)
                               </Text>
                             </div>
                           </div>
@@ -984,7 +989,7 @@ const DashboardPage = () => {
                       <Col span={24}>
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="No statistical data for selected filters"
+                          description={t('dashboard.noStatsForFilters')}
                         />
                       </Col>
                     )}
@@ -995,7 +1000,7 @@ const DashboardPage = () => {
           </Col>
         </Row>
 
-        <Title level={4}>Parking Map</Title>
+        <Title level={4}>{t('dashboard.parkingMap')}</Title>
         <Divider style={{ marginTop: 0, marginBottom: 16 }} />
 
         <ConfigProvider
@@ -1019,7 +1024,7 @@ const DashboardPage = () => {
                 );
                 return {
                   key: floor.id,
-                  label: `Floor ${floor.name}`,
+                  label: t('dashboard.floor', { name: floor.name }),
                   children: (
                     <div
                       style={{
@@ -1033,25 +1038,25 @@ const DashboardPage = () => {
                     >
                       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
                         <Col span={6}>
-                          <Statistic title="Total Slots" value={allSlots.length} />
+                          <Statistic title={t('dashboard.totalSlots')} value={allSlots.length} />
                         </Col>
                         <Col span={6}>
                           <Statistic
-                            title="Available"
+                            title={t('dashboard.available')}
                             value={allSlots.filter((s) => s.status === 'available').length}
                             valueStyle={{ color: '#52c41a' }}
                           />
                         </Col>
                         <Col span={6}>
                           <Statistic
-                            title="Occupied"
+                            title={t('dashboard.occupied')}
                             value={allSlots.filter((s) => s.status === 'occupied').length}
                             valueStyle={{ color: '#ff4d4f' }}
                           />
                         </Col>
                         <Col span={6}>
                           <Statistic
-                            title="Reserved"
+                            title={t('dashboard.reserved')}
                             value={allSlots.filter((s) => s.status === 'reserved').length}
                             valueStyle={{ color: '#faad14' }}
                           />
@@ -1061,7 +1066,7 @@ const DashboardPage = () => {
                       {floor.zones.map((zone) => (
                         <Tag key={zone.id} color={zone.color} style={{ marginBottom: 8 }}>
                           {zone.name}:{' '}
-                          {(zone.slotGroups || []).flatMap((g) => g.slots || []).length} slots
+                          {(zone.slotGroups || []).flatMap((g) => g.slots || []).length} {t('dashboard.slotsSuffix')}
                         </Tag>
                       ))}
                       <div
@@ -1081,7 +1086,7 @@ const DashboardPage = () => {
               })}
             />
           ) : (
-            <Empty description="No map saved yet. Go to Parking Map to create one." />
+            <Empty description={t('dashboard.noMapYet')} />
           )}
         </ConfigProvider>
       </div>

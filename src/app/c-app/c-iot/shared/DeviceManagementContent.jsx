@@ -30,6 +30,7 @@ import {
 import { Navigate } from 'react-router-dom';
 import axiosClient from '../../../c-lib/axios/axiosClient.service';
 import { CATEGORY_IOT_API } from '../../../c-lib/api/iot.api';
+import { useAdminI18n } from '../../../c-lib/i18n/adminI18n';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -42,11 +43,6 @@ const getCategoryDisplayName = (category, fallbackName) => {
 const getStatus = (device) => {
   if (device.isOnline) return 'Online';
   return 'Offline';
-};
-
-const statusConfig = {
-  Online: { color: 'success', icon: <WifiOutlined />, label: 'Online' },
-  Offline: { color: 'error', icon: <DisconnectOutlined />, label: 'Offline' },
 };
 
 const DEVICE_STATUSES = ['Online', 'Offline'];
@@ -70,6 +66,7 @@ const DeviceFormModal = ({
   pageConfig,
   getDeviceStatus,
 }) => {
+  const { t } = useAdminI18n();
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -107,8 +104,8 @@ const DeviceFormModal = ({
           <ApiOutlined style={{ color: '#1677ff' }} />
           <span>
             {mode === 'add'
-              ? `Add ${pageConfig.entityName}`
-              : `Edit ${pageConfig.entityName}`}
+              ? t('iot.addEntity', { entity: pageConfig.entityName })
+              : t('iot.editEntity', { entity: pageConfig.entityName })}
           </span>
         </Space>
       }
@@ -119,39 +116,40 @@ const DeviceFormModal = ({
       }}
       onOk={handleOk}
       confirmLoading={confirmLoading}
-      okText={mode === 'add' ? 'Add' : 'Save Changes'}
+      okText={mode === 'add' ? t('common.add') : t('common.saveChanges')}
+      cancelText={t('common.cancel')}
       destroyOnClose
       width={480}
     >
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-        <Form.Item label="Category">
+        <Form.Item label={t('iot.category')}>
           <Input value={pageConfig.entityName} disabled />
         </Form.Item>
 
         {mode === 'edit' && (
           <>
-            <Form.Item name="_id" label="Device ID">
+            <Form.Item name="_id" label={t('iot.deviceId')}>
               <Input disabled />
             </Form.Item>
-            <Form.Item name="code" label="Device Code">
+            <Form.Item name="code" label={t('iot.deviceCode')}>
               <Input disabled />
             </Form.Item>
             <Form.Item
               name="status"
-              label="Status"
-              rules={[{ required: true, message: 'Please select status' }]}
+              label={t('common.status')}
+              rules={[{ required: true, message: t('iot.pleaseSelectStatus') }]}
             >
-              <Select placeholder="Select status">
+              <Select placeholder={t('iot.pleaseSelectStatus')}>
                 {DEVICE_STATUSES.map((status) => (
                   <Option key={status} value={status}>
-                    {status}
+                    {t(`common.${status.toLowerCase()}`)}
                   </Option>
                 ))}
               </Select>
             </Form.Item>
             {pageConfig.showLinkedSlot && (
-              <Form.Item name="slotId" label="Slot Code (Optional)">
-                <Input placeholder="Enter slot code" allowClear />
+              <Form.Item name="slotId" label={t('iot.slotCodeOptional')}>
+                <Input placeholder={t('iot.enterSlotCode')} allowClear />
               </Form.Item>
             )}
           </>
@@ -162,6 +160,7 @@ const DeviceFormModal = ({
 };
 
 const DeleteConfirmModal = ({ open, device, onClose, onDelete, confirmLoading, categoryName }) => {
+  const { t } = useAdminI18n();
   if (!device) return null;
 
   return (
@@ -169,27 +168,30 @@ const DeleteConfirmModal = ({ open, device, onClose, onDelete, confirmLoading, c
       title={
         <Space style={{ color: '#cf1322' }}>
           <ExclamationCircleOutlined />
-          <span>Delete Device</span>
+          <span>{t('iot.deleteDevice')}</span>
         </Space>
       }
       open={open}
       onCancel={onClose}
       onOk={() => onDelete(device.code)}
       confirmLoading={confirmLoading}
-      okText="Yes, Delete"
+      okText={t('iot.yesDelete')}
       okButtonProps={{ danger: true }}
-      cancelText="Cancel"
+      cancelText={t('common.cancel')}
       width={440}
     >
       <p>
-        Are you sure you want to delete <strong>{device.code}</strong> from{' '}
-        <strong>{categoryName || 'this category'}</strong>?
+        {t('iot.confirmDeleteDevice', {
+          code: device.code,
+          category: categoryName || t('iot.thisCategory'),
+        })}
       </p>
     </Modal>
   );
 };
 
 const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboard', pageConfig, apiConfig }) => {
+  const { t } = useAdminI18n();
   const [devices, setDevices] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -238,13 +240,13 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
         setCategories(response.data || []);
       } else {
         notification.error({
-          message: 'Error fetching categories',
-          description: response?.message || 'Unknown error',
+          message: t('iot.errorFetchingCategories'),
+          description: response?.message || t('common.unknownError'),
         });
       }
     } catch (error) {
       notification.error({
-        message: 'Error fetching categories',
+        message: t('iot.errorFetchingCategories'),
         description: error.message,
       });
     } finally {
@@ -260,13 +262,13 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
         setDevices(response.data || []);
       } else {
         notification.error({
-          message: 'Error fetching IoT devices',
-          description: response?.message || 'Unknown error',
+          message: t('iot.errorFetchingDevices'),
+          description: response?.message || t('common.unknownError'),
         });
       }
     } catch (error) {
       notification.error({
-        message: 'Error fetching IoT devices',
+        message: t('iot.errorFetchingDevices'),
         description: error.message,
       });
     } finally {
@@ -338,20 +340,20 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
       const response = await axiosClient.post(apiConfig.UPDATE, payload);
       if (response?.success) {
         notification.success({
-          message: formMode === 'add' ? 'Device added' : 'Device updated',
-          description: 'Changes saved successfully.',
+          message: formMode === 'add' ? t('iot.deviceAdded') : t('iot.deviceUpdated'),
+          description: t('iot.changesSaved'),
         });
         setFormModalOpen(false);
         fetchDevices();
       } else {
         notification.error({
-          message: 'Failed to save device',
-          description: response?.message || 'Unknown error',
+          message: t('iot.failedToSaveDevice'),
+          description: response?.message || t('common.unknownError'),
         });
       }
     } catch (error) {
       notification.error({
-        message: 'Action failed',
+        message: t('iot.actionFailed'),
         description: error.message,
       });
     } finally {
@@ -365,20 +367,20 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
       const response = await axiosClient.post(apiConfig.DELETE, { items: [code] });
       if (response?.success) {
         notification.success({
-          message: 'Device deleted',
-          description: 'The device was removed successfully.',
+          message: t('iot.deviceDeleted'),
+          description: t('iot.deviceRemovedSuccessfully'),
         });
         setDeleteModalOpen(false);
         fetchDevices();
       } else {
         notification.error({
-          message: 'Failed to delete device',
-          description: response?.message || 'Unknown error',
+          message: t('iot.failedToDeleteDevice'),
+          description: response?.message || t('common.unknownError'),
         });
       }
     } catch (error) {
       notification.error({
-        message: 'Delete failed',
+        message: t('iot.deleteFailed'),
         description: error.message,
       });
     } finally {
@@ -388,7 +390,7 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
 
   const columns = [
     {
-      title: 'Device Code',
+      title: t('iot.deviceCode'),
       dataIndex: 'code',
       key: 'code',
       sorter: (a, b) => String(a.code || '').localeCompare(String(b.code || '')),
@@ -396,7 +398,7 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
     },
     pageConfig.showLinkedSlot
       ? {
-          title: 'Linked Slot',
+          title: t('iot.linkedSlot'),
           dataIndex: 'slotId',
           key: 'slotId',
           render: (slotId) => {
@@ -410,13 +412,20 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
         }
       : null,
     {
-      title: 'Status',
+      title: t('common.status'),
       key: 'status',
-      filters: DEVICE_STATUSES.map((status) => ({ text: status, value: status })),
+      filters: DEVICE_STATUSES.map((status) => ({
+        text: t(`common.${status.toLowerCase()}`),
+        value: status,
+      })),
       onFilter: (value, record) => getDeviceStatus(record) === value,
       render: (_, record) => {
         const status = getDeviceStatus(record);
-        const config = statusConfig[status] || { color: 'default', label: status, icon: null };
+        const translatedStatusConfig = {
+          Online: { color: 'success', icon: <WifiOutlined />, label: t('common.online') },
+          Offline: { color: 'error', icon: <DisconnectOutlined />, label: t('common.offline') },
+        };
+        const config = translatedStatusConfig[status] || { color: 'default', label: status, icon: null };
         return (
           <Badge
             status={config.color}
@@ -431,16 +440,16 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
       },
     },
     {
-      title: 'Actions',
+      title: t('common.actions'),
       key: 'actions',
       fixed: 'right',
       width: 100,
       render: (_, record) => (
         <Space>
-          <Tooltip title="Edit device">
+          <Tooltip title={t('iot.editDevice')}>
             <Button type="text" icon={<EditOutlined />} onClick={() => openEditModal(record)} />
           </Tooltip>
-          <Tooltip title="Delete device">
+          <Tooltip title={t('iot.deleteDevice')}>
             <Button
               type="text"
               danger
@@ -473,10 +482,10 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
         </div>
         <Space>
           <Button onClick={fetchDevices} loading={loading} icon={<ReloadOutlined />}>
-            Refresh
+            {t('common.refresh')}
           </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal} disabled={!selectedCategory}>
-            Add {pageConfig.entityName}
+            {t('iot.addEntity', { entity: pageConfig.entityName })}
           </Button>
         </Space>
       </div>
@@ -484,26 +493,26 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={12} sm={6} md={4}>
           <Card size="small" style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 12, color: '#8c8c8c' }}>Total</div>
+            <div style={{ fontSize: 12, color: '#8c8c8c' }}>{t('iot.totalDevices')}</div>
             <div style={{ fontSize: 22, fontWeight: 'bold' }}>{stats.total}</div>
           </Card>
         </Col>
         <Col xs={12} sm={6} md={4}>
           <Card size="small" style={{ textAlign: 'center', borderColor: '#b7eb8f', background: '#f6ffed' }}>
-            <div style={{ fontSize: 12, color: '#389e0d' }}>Online</div>
+            <div style={{ fontSize: 12, color: '#389e0d' }}>{t('common.online')}</div>
             <div style={{ fontSize: 22, fontWeight: 'bold', color: '#52c41a' }}>{stats.online}</div>
           </Card>
         </Col>
         <Col xs={12} sm={6} md={4}>
           <Card size="small" style={{ textAlign: 'center', borderColor: '#ffa39e', background: '#fff1f0' }}>
-            <div style={{ fontSize: 12, color: '#cf1322' }}>Offline</div>
+            <div style={{ fontSize: 12, color: '#cf1322' }}>{t('common.offline')}</div>
             <div style={{ fontSize: 22, fontWeight: 'bold', color: '#f5222d' }}>{stats.offline}</div>
           </Card>
         </Col>
         {pageConfig.showUnlinkedStat && (
           <Col xs={12} sm={6} md={4}>
             <Card size="small" style={{ textAlign: 'center', borderColor: '#91caff', background: '#e6f4ff' }}>
-              <div style={{ fontSize: 12, color: '#0958d9' }}>Unlinked</div>
+              <div style={{ fontSize: 12, color: '#0958d9' }}>{t('iot.unlinked')}</div>
               <div style={{ fontSize: 22, fontWeight: 'bold', color: '#1677ff' }}>{stats.unlinked}</div>
             </Card>
           </Col>
@@ -512,7 +521,9 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
 
       <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
         <Input
-          placeholder={pageConfig.showLinkedSlot ? 'Search by device code or slot code...' : 'Search by device code...'}
+          placeholder={
+            pageConfig.showLinkedSlot ? t('iot.searchByDeviceOrSlot') : t('iot.searchByDevice')
+          }
           prefix={<SearchOutlined />}
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
@@ -520,15 +531,19 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
           allowClear
         />
         <Select value={statusFilter} onChange={setStatusFilter} style={{ width: 140 }}>
-          <Option value="All">All Status</Option>
+          <Option value="All">{t('common.allStatus')}</Option>
           {DEVICE_STATUSES.map((status) => (
             <Option key={status} value={status}>
-              {status}
+              {t(`common.${status.toLowerCase()}`)}
             </Option>
           ))}
         </Select>
         <Text type="secondary" style={{ lineHeight: '32px' }}>
-          Showing {filteredDevices.length} of {categoryDevices.length} {pageConfig.entityName.toLowerCase()}s
+          {t('iot.showingDevices', {
+            filtered: filteredDevices.length,
+            total: categoryDevices.length,
+            entity: pageConfig.entityName.toLowerCase(),
+          })}
         </Text>
       </Space>
 
@@ -537,9 +552,13 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
         dataSource={filteredDevices}
         rowKey="_id"
         scroll={{ x: 900 }}
-        pagination={{ pageSize: 5, showSizeChanger: true, showTotal: (total) => `${total} devices` }}
+        pagination={{
+          pageSize: 5,
+          showSizeChanger: true,
+          showTotal: (total) => t('iot.devicesCount', { total }),
+        }}
         loading={loading}
-        locale={{ emptyText: `No ${pageConfig.entityName.toLowerCase()}s found.` }}
+        locale={{ emptyText: t('iot.noEntitiesFound', { entity: pageConfig.entityName.toLowerCase() }) }}
       />
 
       <DeviceFormModal

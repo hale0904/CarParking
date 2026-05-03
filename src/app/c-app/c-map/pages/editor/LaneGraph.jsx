@@ -42,6 +42,7 @@ const LaneGraph = ({
   drawingEdge,
   setDrawingEdge,
   pointerPos,  // current mouse position on stage (for live preview)
+  readOnly = false,
 }) => {
 
   const getNode = (id) => laneNodes.find(n => n.id === id);
@@ -89,13 +90,15 @@ const LaneGraph = ({
           stroke="#cbd5e1"
           strokeWidth={w}
           lineCap="round"
-          hitStrokeWidth={w + 16}
+          hitStrokeWidth={readOnly ? 0 : w + 16}
           onClick={(e) => {
+            if (readOnly) return;
             if (editorMode === 'PAN') return;
             e.cancelBubble = true;
             onSelect({ type: 'LANE_EDGE', id: edge.id });
           }}
           onContextMenu={(e) => {
+            if (readOnly) return;
             e.evt.preventDefault();
             e.cancelBubble = true;
             onDeleteEdge(edge.id);
@@ -193,8 +196,9 @@ const LaneGraph = ({
             }
           stroke="white"
           strokeWidth={strokeW}
-          draggable={editorMode !== 'PAN' && !drawingEdge}
+          draggable={!readOnly && editorMode !== 'PAN' && !drawingEdge}
           onClick={(e) => {
+            if (readOnly) return;
             if (editorMode === 'PAN') return;
             e.cancelBubble = true;
 
@@ -216,17 +220,20 @@ const LaneGraph = ({
             }
           }}
           onDragMove={(e) => {
+            if (readOnly) return;
             const nx = e.target.x();
             const ny = e.target.y();
             onUpdateNode(node.id, { x: nx, y: ny });
           }}
           onDragEnd={(e) => {
+            if (readOnly) return;
             const nx = snapToGrid(e.target.x());
             const ny = snapToGrid(e.target.y());
             e.target.x(nx); e.target.y(ny);
             onUpdateNode(node.id, { x: nx, y: ny });
           }}
           onContextMenu={(e) => {
+            if (readOnly) return;
             e.evt.preventDefault();
             e.cancelBubble = true;
             onDeleteNode(node.id);

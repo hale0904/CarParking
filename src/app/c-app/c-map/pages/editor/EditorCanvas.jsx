@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   Stage,
   Layer,
@@ -24,6 +24,64 @@ export const MIN_ZOOM = 0.1;
 export const MAX_ZOOM = 5;
 
 const SNAP_THRESHOLD = 15;
+const DEFAULT_STAGE_WIDTH = 800;
+const DEFAULT_STAGE_HEIGHT = 600;
+
+const collectPoints = (items = []) =>
+  items.flatMap((item) => {
+    if (!item) return [];
+    if (Array.isArray(item.points)) return item.points;
+    const numericValues = [item.x, item.y, item.positionX, item.positionY].filter(
+      (value) => Number.isFinite(value),
+    );
+    return numericValues.length >= 2 ? numericValues.slice(0, 2) : [];
+  });
+
+const computeContentBounds = ({
+  boundary,
+  zones,
+  standaloneSlots,
+  laneNodes,
+  entrances,
+  exits,
+}) => {
+  const points = [
+    ...(boundary?.points || []),
+    ...collectPoints(zones),
+    ...collectPoints(standaloneSlots),
+    ...collectPoints(laneNodes),
+    ...collectPoints(entrances),
+    ...collectPoints(exits),
+  ];
+
+  if (points.length < 2) return null;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (let i = 0; i < points.length; i += 2) {
+    const x = points[i];
+    const y = points[i + 1];
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  }
+
+  if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: Math.max(maxX - minX, 1),
+    height: Math.max(maxY - minY, 1),
+  };
+};
 
 const EditorCanvas = ({
   zones,
@@ -59,11 +117,17 @@ const EditorCanvas = ({
   onFinishZone,
   gridRealSize = 2.5,
   parkingUnit = 'm',
+  readOnly = false,
 }) => {
   const stageRef = useRef(null);
+  const viewportRef = useRef(null);
   const transformerRef = useRef(null);
   const [pointerPos, setPointerPos] = React.useState(null);
   const hudRef = useRef(null);
+  const [stageSize, setStageSize] = useState({
+    width: DEFAULT_STAGE_WIDTH,
+    height: DEFAULT_STAGE_HEIGHT,
+  });
 
   const updateHUD = () => {
     if (!stageRef.current || !hudRef.current) return;
@@ -109,6 +173,78 @@ const EditorCanvas = ({
   useEffect(() => {
     updateHUD();
   });
+
+  useEffect(() => {
+    if (!viewportRef.current) return;
+
+    const updateStageSize = () => {
+      const nextWidth = Math.max(
+        DEFAULT_STAGE_WIDTH,
+        Math.floor(viewportRef.current?.clientWidth || DEFAULT_STAGE_WIDTH),
+      );
+      const nextHeight = Math.max(
+        DEFAULT_STAGE_HEIGHT,
+        Math.floor(viewportRef.current?.clientHeight || DEFAULT_STAGE_HEIGHT),
+      );
+
+      setStageSize((prev) =>
+        prev.width === nextWidth && prev.height === nextHeight
+          ? prev
+          : { width: nextWidth, height: nextHeight },
+      );
+    };
+
+    updateStageSize();
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateStageSize();
+    });
+
+    resizeObserver.observe(viewportRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!readOnly || !stageRef.current) return;
+
+    const bounds = computeContentBounds({
+      boundary,
+      zones,
+      standaloneSlots,
+      laneNodes,
+      entrances,
+      exits,
+    });
+
+    if (!bounds) return;
+
+    const padding = 40;
+    const nextScale = Math.min(
+      MAX_ZOOM,
+      Math.max(
+        MIN_ZOOM,
+        Math.min(
+          (stageSize.width - padding * 2) / bounds.width,
+          (stageSize.height - padding * 2) / bounds.height,
+        ),
+      ),
+    );
+
+    const stage = stageRef.current;
+    const contentCenterX = bounds.minX + bounds.width / 2;
+    const contentCenterY = bounds.minY + bounds.height / 2;
+    const nextPosition = {
+      x: stageSize.width / 2 - contentCenterX * nextScale,
+      y: stageSize.height / 2 - contentCenterY * nextScale,
+    };
+
+    setScale((prevScale) => (Math.abs(prevScale - nextScale) > 0.001 ? nextScale : prevScale));
+    stage.position(nextPosition);
+    updateHUD();
+  }, [readOnly, boundary, zones, standaloneSlots, laneNodes, entrances, exits, setScale, stageSize]);
 
   const handleWheel = (e) => {
     e.evt.preventDefault();
@@ -181,9 +317,9 @@ const EditorCanvas = ({
         id={slot.id}
         x={x}
         y={y}
-        draggable={!isGrouped && editorMode !== 'PAN'} // Only standalone are draggable, and not in PAN mode
+        draggable={!readOnly && !isGrouped && editorMode !== 'PAN'} // Only standalone are draggable, and not in PAN mode
         onDragEnd={
-          !isGrouped
+          !readOnly && !isGrouped
             ? (e) => {
                 const nx = Math.round(e.target.x() / GRID_SIZE) * GRID_SIZE;
                 const ny = Math.round(e.target.y() / GRID_SIZE) * GRID_SIZE;
@@ -194,6 +330,7 @@ const EditorCanvas = ({
             : undefined
         }
         onClick={(e) => {
+          if (readOnly) return;
           if (editorMode === 'PAN') return;
           e.cancelBubble = true;
           if (isGrouped) {
@@ -260,8 +397,9 @@ const EditorCanvas = ({
         x={group.x}
         y={group.y}
         rotation={group.rotation || 0}
-        draggable={editorMode !== 'PAN'}
+        draggable={!readOnly && editorMode !== 'PAN'}
         onDragEnd={(e) => {
+          if (readOnly) return;
           const x = Math.round(e.target.x() / GRID_SIZE) * GRID_SIZE;
           const y = Math.round(e.target.y() / GRID_SIZE) * GRID_SIZE;
           e.target.x(x);
@@ -269,6 +407,7 @@ const EditorCanvas = ({
           onUpdateSlotGroup(parentZoneId, group.id, { x, y });
         }}
         onTransformEnd={(e) => {
+          if (readOnly) return;
           const node = e.target;
           const newWidth = group.width * node.scaleX();
           const newHeight = group.height * node.scaleY();
@@ -284,6 +423,7 @@ const EditorCanvas = ({
           });
         }}
         onClick={(e) => {
+          if (readOnly) return;
           if (editorMode === 'PAN') return;
           e.cancelBubble = true;
           onSelect({ type: 'SLOT_GROUP', id: group.id, parentId: parentZoneId });
@@ -323,8 +463,9 @@ const EditorCanvas = ({
         x={gate.x}
         y={gate.y}
         rotation={gate.rotation || 0}
-        draggable={editorMode !== 'PAN'}
+        draggable={!readOnly && editorMode !== 'PAN'}
         onDragEnd={(e) => {
+          if (readOnly) return;
           const x = Math.round(e.target.x() / GRID_SIZE) * GRID_SIZE;
           const y = Math.round(e.target.y() / GRID_SIZE) * GRID_SIZE;
           e.target.x(x);
@@ -335,6 +476,7 @@ const EditorCanvas = ({
             : onUpdateExit(gate.id, { x, y });
         }}
         onTransformEnd={(e) => {
+          if (readOnly) return;
           const node = e.target;
           const newWidth = Math.round(gate.width * node.scaleX());
           node.scaleX(1);
@@ -351,6 +493,7 @@ const EditorCanvas = ({
           type === 'ENTRANCE' ? onUpdateEntrance(gate.id, update) : onUpdateExit(gate.id, update);
         }}
         onClick={(e) => {
+          if (readOnly) return;
           if (editorMode === 'PAN') return;
           e.cancelBubble = true;
           onSelect({ type, id: gate.id });
@@ -400,7 +543,7 @@ const EditorCanvas = ({
     const barPixels = niceMeter * pixelsPerMeter; // actual pixel width on screen
 
     return (
-      <Group x={20} y={560}>
+      <Group x={20} y={Math.max(20, stageSize.height - 40)}>
         <Line points={[0, 0, 0, 8, barPixels, 8, barPixels, 0]} stroke="#374151" strokeWidth={2} />
         <Text
           text={`${niceMeter}${parkingUnit}`}
@@ -432,19 +575,26 @@ const EditorCanvas = ({
     <div className="editor-canvas-area">
       <div
         className="canvas-viewport"
+        ref={viewportRef}
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
-        style={{ backgroundColor: '#f9fafb', border: '1px solid #ddd', overflow: 'hidden' }}
+        style={{
+          backgroundColor: '#f9fafb',
+          border: '1px solid #ddd',
+          overflow: 'hidden',
+          width: '100%',
+          minHeight: DEFAULT_STAGE_HEIGHT,
+        }}
       >
         <Stage
-          width={800}
-          height={600}
+          width={stageSize.width}
+          height={stageSize.height}
           scaleX={scale}
           scaleY={scale}
           ref={stageRef}
           onMouseDown={(e) => {
             const stage = stageRef.current;
-            if (editorMode === 'PAN') return; // Allow dragging logic from Stage prop
+            if (readOnly || editorMode === 'PAN') return; // Allow dragging logic from Stage prop
 
             if (e.target !== stage) {
               return;
@@ -600,6 +750,7 @@ const EditorCanvas = ({
                     scale={scale}
                     gridRealSize={gridRealSize}
                     parkingUnit={parkingUnit}
+                    readOnly={readOnly}
                     onDragVertex={(index, x, y) => {
                       if (boundary.closed && !pointInPolygon({ x, y }, boundary.points)) {
                         alert('Vertex must remain inside boundary.');
@@ -612,6 +763,7 @@ const EditorCanvas = ({
                       onUpdateZone(zone.id, { points: newPoints });
                     }}
                     onDragEnd={(e) => {
+                      if (readOnly) return;
                       if (editorMode === 'PAN') return;
                       const node = e.target;
 
@@ -639,6 +791,7 @@ const EditorCanvas = ({
                       onUpdateZone(zone.id, { points: newPoints, slotGroups: updatedGroups });
                     }}
                     onClick={() => {
+                      if (readOnly) return;
                       if (editorMode !== 'PAN') onSelect({ type: 'ZONE', id: zone.id });
                     }}
                   />
@@ -707,6 +860,7 @@ const EditorCanvas = ({
               drawingEdge={drawingEdge}
               setDrawingEdge={setDrawingEdge}
               pointerPos={pointerPos}
+              readOnly={readOnly}
             />
 
             {entrances && entrances.map((ent) => renderGate(ent, 'ENTRANCE'))}

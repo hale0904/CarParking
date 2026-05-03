@@ -2,7 +2,7 @@ import React, { useContext, useEffect, useMemo, useState } from 'react';
 import './layoutAdmin.scss';
 import { Layout, Menu, Button, Dropdown, notification } from 'antd';
 import {
-  AlertOutlined,
+  // AlertOutlined,
   BarChartOutlined,
   EnvironmentOutlined,
   GlobalOutlined,
@@ -17,8 +17,12 @@ import {
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import axiosClient from '../../../c-lib/axios/axiosClient.service';
 import { CATEGORY_IOT_API } from '../../../c-lib/api/iot.api';
+import {
+  LANGUAGE_STORAGE_KEY,
+  LanguageContext,
+  useAdminI18n,
+} from '../../../c-lib/i18n/adminI18n';
 
-export const LanguageContext = React.createContext('en');
 export const IotCategoryNavContext = React.createContext({
   categories: [],
   refreshCategories: async () => [],
@@ -27,34 +31,39 @@ export const IotCategoryNavContext = React.createContext({
 
 const { Sider, Content } = Layout;
 
-const Logo = ({ collapsed, toggleCollapsed }) => (
-  <div className={`logo-section ${collapsed ? 'collapsed' : ''}`}>
-    <div className="logo-brand">
-      <span className="logo-text">Smart Parking</span>
-    </div>
-    <Button
-      type="text"
-      icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-      onClick={toggleCollapsed}
-      className="trigger-btn"
-    />
-  </div>
-);
+const Logo = ({ collapsed, toggleCollapsed }) => {
+  const { t } = useAdminI18n();
 
-const AdminFooter = ({ collapsed, language, setLanguage }) => {
+  return (
+    <div className={`logo-section ${collapsed ? 'collapsed' : ''}`}>
+      <div className="logo-brand">
+        <span className="logo-text">{t('common.appName')}</span>
+      </div>
+      <Button
+        type="text"
+        icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+        onClick={toggleCollapsed}
+        className="trigger-btn"
+      />
+    </div>
+  );
+};
+
+const AdminFooter = ({ collapsed }) => {
   const navigate = useNavigate();
+  const { language, setLanguage, t } = useAdminI18n();
 
   const items = [
     {
       key: 'language',
-      label: language === 'en' ? 'Language: EN' : 'Ngon ngu: VI',
+      label: t('layout.language'),
       icon: <GlobalOutlined />,
       onClick: () => setLanguage(language === 'en' ? 'vi' : 'en'),
     },
     { type: 'divider' },
     {
       key: 'logout',
-      label: language === 'en' ? 'Logout' : 'Dang xuat',
+      label: t('common.logout'),
       icon: <LogoutOutlined />,
       danger: true,
       onClick: () => navigate('/'),
@@ -72,10 +81,8 @@ const AdminFooter = ({ collapsed, language, setLanguage }) => {
           {!collapsed && (
             <>
               <div className="admin-info">
-                <span className="admin-name">Admin</span>
-                <span className="admin-role">
-                  {language === 'en' ? 'Super User' : 'Quan tri vien'}
-                </span>
+                <span className="admin-name">{t('common.admin')}</span>
+                <span className="admin-role">{t('common.superUser')}</span>
               </div>
               <UpOutlined className="dropdown-arrow" />
             </>
@@ -86,28 +93,10 @@ const AdminFooter = ({ collapsed, language, setLanguage }) => {
   );
 };
 
-const MenuList = ({ language }) => {
+const MenuList = () => {
   const location = useLocation();
-  const { categories, highlightCategoryCode } = useContext(IotCategoryNavContext);
-
-  const menuLabels = {
-    en: {
-      manageMap: 'Manage Map',
-      iotDeviceManagement: 'IoT Device Management',
-      barrierControl: 'Barrier Control',
-      userManagement: 'User Management',
-      dashboard: 'Dashboard & Reports',
-    },
-    vi: {
-      manageMap: 'Quan ly ban do',
-      iotDeviceManagement: 'Quan ly thiet bi IoT',
-      barrierControl: 'Kiem soat barrier',
-      userManagement: 'Quan ly nguoi dung',
-      dashboard: 'Bang dieu khien va bao cao',
-    },
-  };
-
-  const labels = menuLabels[language] || menuLabels.en;
+  const { highlightCategoryCode } = useContext(IotCategoryNavContext);
+  const { t } = useAdminI18n();
 
   const categoryMenuItems = useMemo(
     () => [
@@ -115,44 +104,44 @@ const MenuList = ({ language }) => {
         key: 'iot-sensors',
         className:
           highlightCategoryCode === 'CA001' ? 'iot-category-menu-item iot-category-menu-item--new' : 'iot-category-menu-item',
-        label: <Link to="/admin/iot-sensors">Sensors</Link>,
+        label: <Link to="/admin/iot-sensors">{t('layout.sensors')}</Link>,
       },
       {
         key: 'iot-cameras',
         className:
           highlightCategoryCode === 'CA002' ? 'iot-category-menu-item iot-category-menu-item--new' : 'iot-category-menu-item',
-        label: <Link to="/admin/iot-cameras">Cameras</Link>,
+        label: <Link to="/admin/iot-cameras">{t('layout.cameras')}</Link>,
       },
     ],
-    [categories, highlightCategoryCode],
+    [highlightCategoryCode, t],
   );
 
   const items = [
     {
       key: 'map-manage',
       icon: <EnvironmentOutlined />,
-      label: <Link to="/admin/parking-map">{labels.manageMap}</Link>,
+      label: <Link to="/admin/parking-map">{t('layout.manageMap')}</Link>,
     },
     {
       key: 'users',
       icon: <TeamOutlined />,
-      label: <Link to="/admin/users">{labels.userManagement}</Link>,
+      label: <Link to="/admin/users">{t('layout.userManagement')}</Link>,
     },
     {
       key: 'iot-management',
       icon: <ThunderboltOutlined />,
-      label: labels.iotDeviceManagement,
+      label: t('layout.iotDeviceManagement'),
       children: categoryMenuItems,
     },
-    {
-      key: 'barrier',
-      icon: <AlertOutlined />,
-      label: <Link to="/admin/barrier-control">{labels.barrierControl}</Link>,
-    },
+    // {
+    //   key: 'barrier',
+    //   icon: <AlertOutlined />,
+    //   label: <Link to="/admin/barrier-control">{t('layout.barrierControl')}</Link>,
+    // },
     {
       key: 'dashboard',
       icon: <BarChartOutlined />,
-      label: <Link to="/admin/dashboard">{labels.dashboard}</Link>,
+      label: <Link to="/admin/dashboard">{t('layout.dashboard')}</Link>,
     },
   ];
 
@@ -160,7 +149,7 @@ const MenuList = ({ language }) => {
     if (location.pathname.includes('/admin/iot-sensors')) return 'iot-sensors';
     if (location.pathname.includes('/admin/iot-cameras')) return 'iot-cameras';
     if (location.pathname.includes('/admin/users')) return 'users';
-    if (location.pathname.includes('/admin/barrier-control')) return 'barrier';
+    // if (location.pathname.includes('/admin/barrier-control')) return 'barrier';
     if (location.pathname.includes('/admin/dashboard')) return 'dashboard';
     if (location.pathname.includes('/admin/parking-map')) return 'map-manage';
     return '';
@@ -180,7 +169,10 @@ const MenuList = ({ language }) => {
 
 const LayoutAdmin = () => {
   const [collapsed, setCollapsed] = useState(false);
-  const [language, setLanguage] = useState('en');
+  const [language, setLanguage] = useState(() => {
+    if (typeof window === 'undefined') return 'en';
+    return window.localStorage.getItem(LANGUAGE_STORAGE_KEY) || 'en';
+  });
   const [categories, setCategories] = useState([]);
   const [highlightCategoryCode, setHighlightCategoryCode] = useState(null);
   const sidebarWidth = 260;
@@ -203,7 +195,10 @@ const LayoutAdmin = () => {
       }
     } catch (error) {
       notification.error({
-        message: 'Failed to load IoT categories',
+        message:
+          language === 'vi'
+            ? 'Khong the tai danh muc IoT'
+            : 'Failed to load IoT categories',
         description: error.message,
       });
     }
@@ -214,6 +209,11 @@ const LayoutAdmin = () => {
   useEffect(() => {
     refreshCategories();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+  }, [language]);
 
   useEffect(() => {
     if (!highlightCategoryCode) return undefined;
@@ -254,9 +254,9 @@ const LayoutAdmin = () => {
             <div className="sidebar-inner">
               <Logo collapsed={collapsed} toggleCollapsed={() => setCollapsed(!collapsed)} />
               <div className="scrollable-menu">
-                <MenuList language={language} />
+                <MenuList />
               </div>
-              <AdminFooter collapsed={collapsed} language={language} setLanguage={setLanguage} />
+              <AdminFooter collapsed={collapsed} />
             </div>
           </Sider>
 
