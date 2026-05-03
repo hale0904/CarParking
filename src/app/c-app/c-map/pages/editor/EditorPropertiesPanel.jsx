@@ -68,21 +68,33 @@ const EditorPropertiesPanel = ({
   };
 
   const getDeleteTooltip = () => {
-    if (selectedType !== 'SLOT') return '';
-    if (selectedData?.dbStatus !== 'inactive') {
-      if (selectedData?.status === 'inactive' || selectedData?.status === 3) {
-        return 'Bạn vừa đổi status nhưng chưa Save Map. Hãy Save Map trước để xác nhận trạng thái Error trên DB, sau đó mới có thể xóa.';
+    if (selectedType === 'SLOT') {
+      if (selectedData?.dbStatus !== 'inactive') {
+        if (selectedData?.status === 'inactive' || selectedData?.status === 3) {
+          return 'You changed the status but have not saved the map yet. Please save the map first to persist the Error state before deleting.';
+        }
+        return 'Slot can only be deleted after the Error/Editing state is saved to the database.';
       }
-      return 'Chỉ có thể xóa slot khi trạng thái Error/Editing đã được lưu trên DB.';
+      if (selectedData?.sensorCode) {
+        return 'Please unassign the sensor from this slot before deleting.';
+      }
     }
-    if (selectedData?.sensorCode) {
-      return 'Vui lòng gỡ sensor khỏi slot trước khi xóa.';
+
+    if (selectedType === 'ZONE') {
+      if (selectedData?.status !== 2) {
+        return 'Zone can only be deleted when its status is Inactive.';
+      }
     }
+
     return '';
   };
 
   const canDeleteSelectedSlot =
-    selectedType !== 'SLOT' || (selectedData?.dbStatus === 'inactive' && !selectedData?.sensorCode);
+    (selectedType === 'SLOT' &&
+      selectedData?.dbStatus === 'inactive' &&
+      !selectedData?.sensorCode) ||
+    (selectedType === 'ZONE' && selectedData?.status === 2) ||
+    !['SLOT', 'ZONE'].includes(selectedType);
 
   return (
     <div className="properties-content">
