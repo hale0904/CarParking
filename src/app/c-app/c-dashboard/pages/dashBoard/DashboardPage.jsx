@@ -271,7 +271,9 @@ const DashboardPage = () => {
         const mapped = {
           metadata: { gridRealSize: 2.5, unit: 'm' },
           parking: {
-            floors: (item.floors || []).map((floor) => ({
+            floors: (item.floors || [])
+              .filter((floor) => floor.status === 1)
+              .map((floor) => ({
               id: floor.code,
               name: floor.nameFloor,
               boundary: floor.boundary || { points: [], closed: false },
@@ -353,7 +355,9 @@ const DashboardPage = () => {
         const mapped = {
           metadata: { gridRealSize: 2.5, unit: 'm' },
           parking: {
-            floors: (item.floors || []).map((floor) => ({
+            floors: (item.floors || [])
+              .filter((floor) => floor.status === 1)
+              .map((floor) => ({
               id: floor.code,
               name: floor.nameFloor,
               boundary: floor.boundary || { points: [], closed: false },

@@ -21,7 +21,6 @@ import {
 import {
   CalendarOutlined,
   CarOutlined,
-  CrownOutlined,
   IdcardOutlined,
   MailOutlined,
   PhoneOutlined,
@@ -35,12 +34,6 @@ import { USER_API } from '../../../c-lib/api/user.api';
 import { useAdminI18n } from '../../../c-lib/i18n/adminI18n';
 
 const { Title, Text } = Typography;
-
-const getVehicleStatusColor = (status) => {
-  if (status === 1) return 'green';
-  if (status === 0) return 'red';
-  return 'default';
-};
 
 const formatPhoneNumber = (phone) => {
   if (phone === null || phone === undefined || phone === '') return 'N/A';
@@ -90,7 +83,10 @@ const UserManagement = () => {
         (user.code && user.code.toLowerCase().includes(lowerSearch)) ||
         (user.email && user.email.toLowerCase().includes(lowerSearch)) ||
         (user.phone && String(user.phone).includes(lowerSearch)) ||
-        (user.vehicles && user.vehicles.some((v) => v.licensePlate && v.licensePlate.toLowerCase().includes(lowerSearch)))
+        (user.vehicles &&
+          user.vehicles.some(
+            (v) => v.licensePlate && v.licensePlate.toLowerCase().includes(lowerSearch),
+          )),
     );
   }, [users, searchText]);
 
@@ -107,7 +103,7 @@ const UserManagement = () => {
 
   const columns = [
     {
-      title: t('users.name') || 'Tên',
+      title: t('users.name') || 'Name',
       dataIndex: 'userName',
       key: 'userName',
       sorter: (a, b) => String(a.userName || '').localeCompare(String(b.userName || '')),
@@ -119,14 +115,18 @@ const UserManagement = () => {
             style={{ backgroundColor: '#f0f0f0', border: '1px solid #d9d9d9' }}
           />
           <Space direction="vertical" size={0}>
-            <Text strong style={{ fontSize: 15 }}>{text || t('common.notAvailable')}</Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>{record.code}</Text>
+            <Text strong style={{ fontSize: 15 }}>
+              {text || t('common.notAvailable')}
+            </Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {record.code}
+            </Text>
           </Space>
         </Space>
       ),
     },
     {
-      title: 'Thông tin liên hệ',
+      title: t('users.contactInformation'),
       key: 'contact',
       render: (_, record) => (
         <Space direction="vertical" size={2}>
@@ -142,12 +142,14 @@ const UserManagement = () => {
               <Text type="secondary">{record.email}</Text>
             </Space>
           ) : null}
-          {!record.phone && !record.email && <Text type="secondary">{t('common.notAvailable')}</Text>}
+          {!record.phone && !record.email && (
+            <Text type="secondary">{t('common.notAvailable')}</Text>
+          )}
         </Space>
       ),
     },
     {
-      title: 'Biển số xe',
+      title: t('users.licensePlates'),
       key: 'licensePlates',
       render: (_, record) => (
         <Space wrap>
@@ -164,16 +166,17 @@ const UserManagement = () => {
       ),
     },
     {
-      title: 'Trạng thái',
+      title: t('common.status'),
       key: 'status',
       render: (_, record) => {
-        const isActive = record.status === undefined || record.status === 1 || record.status === 'Active';
+        const isActive =
+          record.status === undefined || record.status === 1 || record.status === 'Active';
         return (
           <Badge
             status={isActive ? 'success' : 'error'}
             text={
               <span style={{ color: isActive ? '#52c41a' : '#f5222d', fontWeight: 500 }}>
-                {isActive ? 'Active' : 'Inactive'}
+                {isActive ? t('users.active') : t('users.inactive')}
               </span>
             }
           />
@@ -222,7 +225,11 @@ const UserManagement = () => {
 
         <Row gutter={[16, 16]}>
           <Col xs={12} sm={6}>
-            <Card bordered={false} style={{ background: '#fafafa', borderRadius: '8px' }} bodyStyle={{ padding: '16px' }}>
+            <Card
+              bordered={false}
+              style={{ background: '#fafafa', borderRadius: '8px' }}
+              bodyStyle={{ padding: '16px' }}
+            >
               <Text type="secondary">{t('users.totalUsers')}</Text>
               <Title level={2} style={{ margin: '8px 0 0 0', color: '#1677ff' }}>
                 {stats.total}
@@ -230,7 +237,11 @@ const UserManagement = () => {
             </Card>
           </Col>
           <Col xs={12} sm={6}>
-            <Card bordered={false} style={{ background: '#fffbe6', borderRadius: '8px' }} bodyStyle={{ padding: '16px' }}>
+            <Card
+              bordered={false}
+              style={{ background: '#fffbe6', borderRadius: '8px' }}
+              bodyStyle={{ padding: '16px' }}
+            >
               <Text type="secondary" style={{ color: '#d48806' }}>
                 {t('users.admins')}
               </Text>
@@ -240,7 +251,11 @@ const UserManagement = () => {
             </Card>
           </Col>
           <Col xs={12} sm={6}>
-            <Card bordered={false} style={{ background: '#e6f4ff', borderRadius: '8px' }} bodyStyle={{ padding: '16px' }}>
+            <Card
+              bordered={false}
+              style={{ background: '#e6f4ff', borderRadius: '8px' }}
+              bodyStyle={{ padding: '16px' }}
+            >
               <Text type="secondary" style={{ color: '#0958d9' }}>
                 {t('users.users')}
               </Text>
@@ -250,7 +265,11 @@ const UserManagement = () => {
             </Card>
           </Col>
           <Col xs={12} sm={6}>
-            <Card bordered={false} style={{ background: '#f6ffed', borderRadius: '8px' }} bodyStyle={{ padding: '16px' }}>
+            <Card
+              bordered={false}
+              style={{ background: '#f6ffed', borderRadius: '8px' }}
+              bodyStyle={{ padding: '16px' }}
+            >
               <Text type="secondary" style={{ color: '#389e0d' }}>
                 {t('users.newThisMonth')}
               </Text>
@@ -264,7 +283,11 @@ const UserManagement = () => {
 
       <Card
         bordered={false}
-        style={{ borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', minHeight: '600px' }}
+        style={{
+          borderRadius: '12px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+          minHeight: '600px',
+        }}
         bodyStyle={{ padding: '24px' }}
       >
         <div
@@ -344,7 +367,13 @@ const UserManagement = () => {
               </Space>
             </Space>
 
-            <Descriptions title={t('users.basicInformation')} bordered column={1} size="middle" labelStyle={{ width: 160 }}>
+            <Descriptions
+              title={t('users.basicInformation')}
+              bordered
+              column={1}
+              size="middle"
+              labelStyle={{ width: 160 }}
+            >
               <Descriptions.Item label={t('users.userCode')}>
                 <Space size={8}>
                   <IdcardOutlined />
@@ -394,18 +423,28 @@ const UserManagement = () => {
                   renderItem={(vehicle) => (
                     <List.Item>
                       <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                        <Space style={{ justifyContent: 'space-between', width: '100%' }} align="start">
+                        <Space
+                          style={{ justifyContent: 'space-between', width: '100%' }}
+                          align="start"
+                        >
                           <Space size={8}>
                             <CarOutlined style={{ color: '#1677ff' }} />
-                            <Text strong>{vehicle.nameVehicles || vehicle.code || t('common.notAvailable')}</Text>
+                            <Text strong>
+                              {vehicle.nameVehicles || vehicle.code || t('common.notAvailable')}
+                            </Text>
                           </Space>
-
                         </Space>
-                        <Text type="secondary">{t('users.code')}: {vehicle.code || t('common.notAvailable')}</Text>
-                        <Text>{t('users.licensePlate')}: {vehicle.licensePlate || t('common.notAvailable')}</Text>
+                        <Text type="secondary">
+                          {t('users.code')}: {vehicle.code || t('common.notAvailable')}
+                        </Text>
+                        <Text>
+                          {t('users.licensePlate')}: {vehicle.licensePlate || t('common.notAvailable')}
+                        </Text>
                         <Text type="secondary">
                           {t('users.createdAt')}:{' '}
-                          {vehicle.createdAt ? dayjs(vehicle.createdAt).format('DD/MM/YYYY HH:mm') : t('common.notAvailable')}
+                          {vehicle.createdAt
+                            ? dayjs(vehicle.createdAt).format('DD/MM/YYYY HH:mm')
+                            : t('common.notAvailable')}
                         </Text>
                       </Space>
                     </List.Item>

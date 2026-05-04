@@ -166,6 +166,18 @@ const EmptyStateMap = ({ onCreate }) => (
   </div>
 );
 
+const cloneFloorLayoutFromTemplate = (templateFloor) => {
+  if (!templateFloor) {
+    return {
+      boundary: { points: [], closed: false },
+    };
+  }
+
+  return {
+    boundary: JSON.parse(JSON.stringify(templateFloor.boundary || { points: [], closed: false })),
+  };
+};
+
 const ParkingMapEditor = () => {
   const { saveMap } = useParkingMapStorage();
   const [isEditorActive, setIsEditorActive] = useState(false);
@@ -173,6 +185,7 @@ const ParkingMapEditor = () => {
   const [parkingCode, setParkingCode] = useState('PK001');
   const [parkingLocation, setParkingLocation] = useState('');
   const [parkingStatus, setParkingStatus] = useState(1);
+  const [parkingDbStatus, setParkingDbStatus] = useState(1);
   const [sensors, setSensors] = useState([]);
 
   // [MULTIFLOOR STATE]
@@ -196,6 +209,7 @@ const ParkingMapEditor = () => {
     },
   ]);
   const [activeFloorId, setActiveFloorId] = useState(initialFloorId);
+  const [floorDbStatuses, setFloorDbStatuses] = useState({});
   const [isLoadingMap, setIsLoadingMap] = useState(true);
   const [scale, setScale] = useState(0.29);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
@@ -227,6 +241,7 @@ const ParkingMapEditor = () => {
         setParkingName(item.name || 'New Parking Lot');
         setParkingLocation(item.location || '');
         setParkingStatus(item.status !== undefined ? item.status : 1);
+        setParkingDbStatus(item.status !== undefined ? item.status : 1);
 
         if (item.floors && item.floors.length > 0) {
           const mappedFloors = item.floors.map((floor) => ({
@@ -234,6 +249,7 @@ const ParkingMapEditor = () => {
             name: floor.nameFloor,
             level: floor.level || 1,
             status: floor.status ?? 0,
+            dbStatus: floor.status ?? 0,
             boundary: floor.boundary || { points: [], closed: false },
             standaloneSlots: [],
             ...parseLegacyLanesToGraph(floor.lanes || [], floor.laneNodes || []),
@@ -307,6 +323,11 @@ const ParkingMapEditor = () => {
               })),
             })),
           }));
+          const dbStatusMap = {};
+          mappedFloors.forEach((floor) => {
+            dbStatusMap[floor.id] = floor.dbStatus ?? 0;
+          });
+          setFloorDbStatuses(dbStatusMap);
           floorsToFit = mappedFloors;
           setFloors(mappedFloors);
           setActiveFloorId(mappedFloors[0].id);
@@ -335,6 +356,15 @@ const ParkingMapEditor = () => {
         });
       }
     }
+  };
+
+  const restoreSavedMap = async () => {
+    setSelectedEntity(null);
+    setDraftZone({ points: [], closed: false });
+    setDrawingEdge(null);
+    setEditorMode(null);
+
+    await fetchMapData({ showPageLoader: false, refitView: false });
   };
 
   React.useEffect(() => {
@@ -444,11 +474,14 @@ const ParkingMapEditor = () => {
 
   // Floor Management Handlers
   const handleAddFloor = (values) => {
+    const templateFloor = floors[0];
+    const clonedLayout = cloneFloorLayoutFromTemplate(templateFloor);
+
     const newFloor = {
       id: `floor-${Date.now()}`,
       name: values.name,
       level: values.level,
-      boundary: { points: [], closed: false },
+      boundary: clonedLayout.boundary,
       zones: [],
       standaloneSlots: [],
       laneNodes: [],
@@ -954,7 +987,7 @@ const ParkingMapEditor = () => {
               code: parkingCode,
               name: parkingName,
               location: parkingLocation,
-              status: parkingStatus || 1,
+              status: parkingStatus ?? 1,
               totalFloors: floors.length,
               floors: floors.map((floor, fi) => ({
                 code: floor.id?.startsWith('floor-')
@@ -1004,7 +1037,7 @@ const ParkingMapEditor = () => {
                   })),
                 })),
                 entrances: floor.entrances.map((e, i) => ({
-                  code: `E${i + 1}`,
+                  code: `F${fi + 1}-E${i + 1}`,
                   positionX: e.x,
                   positionY: e.y,
                   height: e.height,
@@ -1013,7 +1046,7 @@ const ParkingMapEditor = () => {
                   status: 1,
                 })),
                 exits: floor.exits.map((e, i) => ({
-                  code: `X${i + 1}`,
+                  code: `F${fi + 1}-X${i + 1}`,
                   positionX: e.x,
                   positionY: e.y,
                   height: e.height,
@@ -1041,8 +1074,8 @@ const ParkingMapEditor = () => {
                     }
 
                     return {
-                      // Chỉ giữ code dạng L1, L2, L3... còn lại tạo mới
-                      code: `L${i + 1}`,
+                      // Add floor index to guarantee unique lane codes across all floors
+                      code: `F${fi + 1}-L${i + 1}`,
                       status: 1,
                       points: [fromNode.x, fromNode.y, toNode.x, toNode.y],
                       laneWidth: edge.width ?? 20,
@@ -1095,6 +1128,27 @@ const ParkingMapEditor = () => {
             setIsSaving(false);
           }
         })();
+      },
+    });
+  };
+
+  const handleCancelEditing = () => {
+    if (isSaving) return;
+
+    Modal.confirm({
+      title: 'Revert Unsaved Changes',
+      content: 'Are you sure? Any unsaved changes will be removed and the map will return to the last saved state.',
+      okText: 'Revert Changes',
+      okType: 'danger',
+      cancelText: 'Keep Editing',
+      onOk: async () => {
+        try {
+          await restoreSavedMap();
+          message.success('Reverted to the last saved map.');
+        } catch (error) {
+          console.error('Failed to restore saved map:', error);
+          message.error('Could not restore the last saved map.');
+        }
       },
     });
   };
@@ -1246,7 +1300,7 @@ const ParkingMapEditor = () => {
     <div className="parking-map-editor">
       <EditorTopBar
         onSave={handleSave}
-        onCancel={() => setIsEditorActive(false)}
+        onCancel={handleCancelEditing}
         parkingName={parkingName}
         isSaving={isSaving}
       />
@@ -1410,6 +1464,8 @@ const ParkingMapEditor = () => {
                     parkingUnit,
                     activeFloorLevel: activeFloor.level,
                     floorStatus: activeFloor.status ?? 1,
+                    parkingDbStatus,
+                    floorDbStatus: floorDbStatuses[activeFloorId] ?? activeFloor.dbStatus ?? 1,
                     gridRealSize,
                     status: parkingStatus,
                   })
@@ -1429,13 +1485,6 @@ const ParkingMapEditor = () => {
                 if (props.parkingUnit !== undefined) setParkingUnit(props.parkingUnit);
                 if (props.gridRealSize !== undefined) setGridRealSize(props.gridRealSize);
                 if (props.status !== undefined) setParkingStatus(props.status);
-                if (props.activeFloorLevel !== undefined) {
-                  setFloors((prev) =>
-                    prev.map((f) =>
-                      f.id === activeFloorId ? { ...f, level: props.activeFloorLevel } : f,
-                    ),
-                  );
-                }
                 if (props.floorStatus !== undefined) {
                   setFloors((prev) =>
                     prev.map((f) =>

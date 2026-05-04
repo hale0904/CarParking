@@ -154,6 +154,10 @@ const dictionaries = {
       createdAt: 'Created At',
       noVehicles: 'This user has no vehicles.',
       unknown: 'Unknown',
+      contactInformation: 'Contact Information',
+      licensePlates: 'License Plates',
+      active: 'Active',
+      inactive: 'Inactive',
     },
   },
   vi: {
@@ -300,6 +304,10 @@ const dictionaries = {
       createdAt: 'Ngày tạo',
       noVehicles: 'Người dùng này không có xe.',
       unknown: 'Không xác định',
+      contactInformation: 'Thông tin liên hệ',
+      licensePlates: 'Biển số xe',
+      active: 'Hoạt động',
+      inactive: 'Không hoạt động',
     },
   },
 };

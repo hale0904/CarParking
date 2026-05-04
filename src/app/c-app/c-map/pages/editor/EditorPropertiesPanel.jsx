@@ -269,7 +269,7 @@ const EditorPropertiesPanel = ({
               <Input
                 value={selectedData.parkingName}
                 onChange={(e) => handleChange('parkingName', e)}
-                disabled={selectedData.status !== 0}
+                disabled={selectedData.parkingDbStatus !== 0}
               />
             </Form.Item>
             <Form.Item label="Status">
@@ -287,7 +287,7 @@ const EditorPropertiesPanel = ({
                 value={selectedData.parkingCode}
                 onChange={(e) => handleChange('parkingCode', e)}
                 placeholder="e.g. PK001"
-                disabled={selectedData.status !== 0}
+                disabled={selectedData.parkingDbStatus !== 0}
               />
             </Form.Item>
             <Form.Item label="Location">
@@ -295,7 +295,7 @@ const EditorPropertiesPanel = ({
                 value={selectedData.parkingLocation}
                 onChange={(e) => handleChange('parkingLocation', e)}
                 placeholder="e.g. Ward 8, HCMC"
-                disabled={selectedData.status !== 0}
+                disabled={selectedData.parkingDbStatus !== 0}
               />
             </Form.Item>
 
@@ -320,10 +320,8 @@ const EditorPropertiesPanel = ({
               <InputNumber
                 style={{ width: '100%' }}
                 value={selectedData.activeFloorLevel}
-                onChange={(val) => handleChange('activeFloorLevel', val)}
                 placeholder="e.g. -1 for B1, 1 for ground"
-                disabled={selectedData.floorStatus !== 0}
-                min={selectedData.activeFloorLevel}
+                disabled
               />
             </Form.Item>
             <Form.Item label="Floor Status">
@@ -331,16 +329,16 @@ const EditorPropertiesPanel = ({
                 value={selectedData.floorStatus !== undefined ? selectedData.floorStatus : 1}
                 onChange={(val) => handleChange('floorStatus', val)}
               >
-                <Option value={0}>Inactive</Option>
+                <Option value={0}>Editing</Option>
                 <Option value={1}>Active</Option>
-                <Option value={2}>Maintenance</Option>
+                <Option value={2}>Inactive</Option>
               </Select>
             </Form.Item>
             <Form.Item label="Measurement Unit">
               <Select
                 value={selectedData.parkingUnit}
                 onChange={(val) => handleChange('parkingUnit', val)}
-                disabled={selectedData.status !== 0}
+                disabled
               >
                 <Option value="m">Meters (m)</Option>
                 <Option value="ft">Feet (ft)</Option>
@@ -356,7 +354,7 @@ const EditorPropertiesPanel = ({
                 placeholder="e.g. 2.5"
                 step={0.1}
                 min={0.1}
-                disabled={selectedData.status !== 0}
+                disabled
               />
             </Form.Item>
           </>

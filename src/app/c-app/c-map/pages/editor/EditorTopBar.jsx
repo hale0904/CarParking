@@ -5,8 +5,6 @@ import {
     ArrowLeftOutlined,
     SaveOutlined,
     StopOutlined,
-    CloudUploadOutlined,
-    EyeOutlined
 } from '@ant-design/icons';
 
 const { Title } = Typography;
@@ -39,23 +37,16 @@ const EditorTopBar = ({ parkingName = "New Parking Map", onSave, onCancel, isSav
 
             {/* Right: Actions */}
             <div className="top-bar-right">
-                {/* <Tooltip title="Cancel modifications">
+                <Tooltip title="Cancel modifications">
                     <Button
                         icon={<StopOutlined />}
                         onClick={onCancel}
                         danger
+                        disabled={isSaving}
                     >
                         Cancel
                     </Button>
                 </Tooltip>
-
-                <Tooltip title="Import Config (Coming Soon)">
-                    <Button icon={<CloudUploadOutlined />} disabled />
-                </Tooltip>
-
-                <Tooltip title="Preview Map (Coming Soon)">
-                    <Button icon={<EyeOutlined />} disabled />
-                </Tooltip> */}
 
                 <Button
                     type="primary"

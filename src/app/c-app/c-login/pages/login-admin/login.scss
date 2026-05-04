@@ -13,6 +13,7 @@
 
   * {
     font-family: 'Inter', sans-serif;
+    box-sizing: border-box;
   }
 
   // True Mesh/Blob Gradient Background
@@ -55,7 +56,6 @@
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
     overflow: hidden;
     height: 100%;
-    min-height: 600px;
   }
 
   // --- LEFT SIDE: HERO (55%) ---
@@ -101,8 +101,13 @@
       inset: 0;
       z-index: 1;
 
+      /* Ensure Antd Carousel fills the wrapper height */
+      div {
+        height: 100%;
+      }
+
       .slide-image {
-        height: 700px; /* Force cover height */
+        height: 100%;
         background-size: cover;
         background-position: center;
       }
@@ -114,13 +119,27 @@
     flex: 1; /* 45% */
     display: flex;
     flex-direction: column;
-    justify-content: center;
     background: rgba(255, 255, 255, 0.65); /* Translucent bright integration */
     padding: 48px;
+    overflow-y: auto;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+    
+    &::-webkit-scrollbar {
+      display: none; /* Chrome, Safari and Opera */
+    }
+
+    @media (max-height: 700px) {
+      padding: 24px;
+    }
+
+    @media (max-width: 768px) {
+      padding: 32px 24px;
+    }
 
     .form-inner {
       max-width: 360px;
-      margin: 0 auto;
+      margin: auto;
       width: 100%;
 
       .form-header {
