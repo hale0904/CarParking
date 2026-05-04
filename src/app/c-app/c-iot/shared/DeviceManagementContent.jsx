@@ -453,6 +453,7 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
             <Button
               type="text"
               danger
+              disabled={getDeviceStatus(record) === 'Online'}
               icon={<DeleteOutlined />}
               onClick={() => {
                 setDeletingDevice(record);
