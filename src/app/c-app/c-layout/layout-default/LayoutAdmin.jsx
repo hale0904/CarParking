@@ -4,6 +4,7 @@ import { Layout, Menu, Button, Dropdown, notification } from 'antd';
 import {
   // AlertOutlined,
   BarChartOutlined,
+  DollarOutlined,
   EnvironmentOutlined,
   GlobalOutlined,
   LogoutOutlined,
@@ -17,11 +18,7 @@ import {
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import axiosClient from '../../../c-lib/axios/axiosClient.service';
 import { CATEGORY_IOT_API } from '../../../c-lib/api/iot.api';
-import {
-  LANGUAGE_STORAGE_KEY,
-  LanguageContext,
-  useAdminI18n,
-} from '../../../c-lib/i18n/adminI18n';
+import { LANGUAGE_STORAGE_KEY, LanguageContext, useAdminI18n } from '../../../c-lib/i18n/adminI18n';
 import AuthHelper from '../../../c-lib/auth/auth.helper';
 
 export const IotCategoryNavContext = React.createContext({
@@ -71,7 +68,10 @@ const AdminFooter = ({ collapsed }) => {
         AuthHelper.clearTokens();
         notification.success({
           message: language === 'vi' ? 'Đăng xuất thành công' : 'Logout Successful',
-          description: language === 'vi' ? 'Bạn đã đăng xuất khỏi hệ thống.' : 'You have been logged out of the system.',
+          description:
+            language === 'vi'
+              ? 'Bạn đã đăng xuất khỏi hệ thống.'
+              : 'You have been logged out of the system.',
           placement: 'topRight',
         });
         navigate('/login');
@@ -112,13 +112,17 @@ const MenuList = () => {
       {
         key: 'iot-sensors',
         className:
-          highlightCategoryCode === 'CA001' ? 'iot-category-menu-item iot-category-menu-item--new' : 'iot-category-menu-item',
+          highlightCategoryCode === 'CA001'
+            ? 'iot-category-menu-item iot-category-menu-item--new'
+            : 'iot-category-menu-item',
         label: <Link to="/admin/iot-sensors">{t('layout.sensors')}</Link>,
       },
       {
         key: 'iot-cameras',
         className:
-          highlightCategoryCode === 'CA002' ? 'iot-category-menu-item iot-category-menu-item--new' : 'iot-category-menu-item',
+          highlightCategoryCode === 'CA002'
+            ? 'iot-category-menu-item iot-category-menu-item--new'
+            : 'iot-category-menu-item',
         label: <Link to="/admin/iot-cameras">{t('layout.cameras')}</Link>,
       },
     ],
@@ -126,6 +130,11 @@ const MenuList = () => {
   );
 
   const items = [
+    {
+      key: 'dashboard',
+      icon: <BarChartOutlined />,
+      label: <Link to="/admin/dashboard">{t('layout.dashboard')}</Link>,
+    },
     {
       key: 'map-manage',
       icon: <EnvironmentOutlined />,
@@ -148,9 +157,9 @@ const MenuList = () => {
     //   label: <Link to="/admin/barrier-control">{t('layout.barrierControl')}</Link>,
     // },
     {
-      key: 'dashboard',
-      icon: <BarChartOutlined />,
-      label: <Link to="/admin/dashboard">{t('layout.dashboard')}</Link>,
+      key: 'payment',
+      icon: <DollarOutlined />,
+      label: <Link to="/admin/payment">{t('layout.payment')}</Link>,
     },
   ];
 
@@ -160,6 +169,7 @@ const MenuList = () => {
     if (location.pathname.includes('/admin/users')) return 'users';
     // if (location.pathname.includes('/admin/barrier-control')) return 'barrier';
     if (location.pathname.includes('/admin/dashboard')) return 'dashboard';
+    if (location.pathname.includes('/admin/payment')) return 'payment';
     if (location.pathname.includes('/admin/parking-map')) return 'map-manage';
     return '';
   }, [location.pathname]);
@@ -194,7 +204,9 @@ const LayoutAdmin = () => {
         setCategories(nextCategories);
 
         if (highlightName) {
-          const matchedCategory = nextCategories.find((category) => category.name === highlightName);
+          const matchedCategory = nextCategories.find(
+            (category) => category.name === highlightName,
+          );
           if (matchedCategory?.code) {
             setHighlightCategoryCode(matchedCategory.code);
           }
@@ -204,10 +216,7 @@ const LayoutAdmin = () => {
       }
     } catch (error) {
       notification.error({
-        message:
-          language === 'vi'
-            ? 'Khong the tai danh muc IoT'
-            : 'Failed to load IoT categories',
+        message: language === 'vi' ? 'Khong the tai danh muc IoT' : 'Failed to load IoT categories',
         description: error.message,
       });
     }

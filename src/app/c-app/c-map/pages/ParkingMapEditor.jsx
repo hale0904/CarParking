@@ -21,7 +21,8 @@ import { io } from 'socket.io-client';
 
 const SLOT_SIZE = { width: 25, height: 40 };
 const SLOT_GAP = 3;
-const socket = io('https://be-smartparking.onrender.com');
+const socket = io('http://localhost:3000');
+// const SOCKET_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
 const GRID_SIZE = 20;
 
@@ -1137,7 +1138,8 @@ const ParkingMapEditor = () => {
 
     Modal.confirm({
       title: 'Revert Unsaved Changes',
-      content: 'Are you sure? Any unsaved changes will be removed and the map will return to the last saved state.',
+      content:
+        'Are you sure? Any unsaved changes will be removed and the map will return to the last saved state.',
       okText: 'Revert Changes',
       okType: 'danger',
       cancelText: 'Keep Editing',

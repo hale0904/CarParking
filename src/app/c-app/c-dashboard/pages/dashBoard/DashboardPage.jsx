@@ -16,8 +16,9 @@ import {
   DatePicker,
   Select,
   Button,
+  Badge,
 } from 'antd';
-import { ExpandOutlined, FilePdfOutlined, FileExcelOutlined } from '@ant-design/icons';
+import { ExpandOutlined, FilePdfOutlined, FileExcelOutlined, WifiOutlined } from '@ant-design/icons';
 import {
   PieChart,
   Pie,
@@ -53,8 +54,16 @@ const DEFAULT_DATE_RANGE = [dayjs().startOf('month'), dayjs()];
 const DEFAULT_REVENUE_CUSTOM_RANGE = [dayjs().startOf('month'), dayjs()];
 const CURRENCY_FORMATTER = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
 
+const STATUS_MAP = {
+  0: 'available',
+  1: 'occupied',
+  2: 'reserved',
+  3: 'inactive',
+};
+
 const safeNumber = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
 const formatCurrency = (value) => CURRENCY_FORMATTER.format(safeNumber(value));
+
 const EXPORT_FORMAT_CONFIG = {
   pdf: {
     extension: 'pdf',
@@ -197,6 +206,62 @@ const parseLegacyLanesToGraph = (lanesApiData, apiNodes = []) => {
   return { laneNodes, laneEdges };
 };
 
+// Helper để map floor data từ API response
+const mapFloorData = (floor) => ({
+  id: floor.code,
+  name: floor.nameFloor,
+  boundary: floor.boundary || { points: [], closed: false },
+  standaloneSlots: [],
+  ...parseLegacyLanesToGraph(floor.lanes || [], floor.laneNodes || []),
+  entrances: (floor.entrances || []).map((e) => ({
+    id: e.code,
+    x: e.positionX,
+    y: e.positionY,
+    width: e.witdh,
+    height: e.height,
+    rotation: e.rotation,
+  })),
+  exits: (floor.exits || []).map((e) => ({
+    id: e.code,
+    x: e.positionX,
+    y: e.positionY,
+    width: e.witdh,
+    height: e.height,
+    rotation: e.rotation,
+  })),
+  zones: (floor.zones || []).map((zone) => ({
+    id: zone.code,
+    name: zone.nameZone,
+    color: zone.color || '#3b82f6',
+    points: zone.points,
+    slotGroups: (zone.groupSlots || []).map((group) => ({
+      id: group.code,
+      x: group.positionX,
+      y: group.positionY,
+      width: group.width,
+      height: group.height,
+      rotation: group.rotation,
+      direction: group.direction,
+      slots: (group.slots || []).map((slot) => ({
+        id: slot._id?.toString(),   // Luôn convert sang string để so sánh với slotId từ socket
+        code: slot.code,
+        status:
+          slot.status === 0
+            ? 'available'
+            : slot.status === 1
+              ? 'occupied'
+              : slot.status === 2
+                ? 'reserved'
+                : slot.status === 3
+                  ? 'inactive'
+                  : 'available',
+        sensorId: slot.sensorId,
+        sensorStatus: slot.sensorStatus,
+      })),
+    })),
+  })),
+});
+
 const FloorMapView = ({ floor, metadata }) => {
   const [scale, setScale] = useState(0.5);
   const [editorMode] = useState('PAN');
@@ -211,22 +276,22 @@ const FloorMapView = ({ floor, metadata }) => {
       exits={floor.exits || []}
       boundary={floor.boundary || { points: [], closed: false }}
       selectedEntity={null}
-      onSelect={() => {}}
-      onUpdateZone={() => {}}
-      onUpdateSlotGroup={() => {}}
-      onUpdateStandaloneSlot={() => {}}
-      onUpdateLane={() => {}}
-      onUpdateEntrance={() => {}}
-      onUpdateExit={() => {}}
-      onDrop={() => {}}
+      onSelect={() => { }}
+      onUpdateZone={() => { }}
+      onUpdateSlotGroup={() => { }}
+      onUpdateStandaloneSlot={() => { }}
+      onUpdateLane={() => { }}
+      onUpdateEntrance={() => { }}
+      onUpdateExit={() => { }}
+      onDrop={() => { }}
       scale={scale}
       setScale={setScale}
-      onUpdateBoundary={() => {}}
-      onFinishBoundary={() => {}}
+      onUpdateBoundary={() => { }}
+      onFinishBoundary={() => { }}
       editorMode={editorMode}
       draftZone={{ points: [], closed: false }}
-      setDraftZone={() => {}}
-      onFinishZone={() => {}}
+      setDraftZone={() => { }}
+      onFinishZone={() => { }}
       gridRealSize={metadata?.gridRealSize || 2.5}
       parkingUnit={metadata?.unit || 'm'}
       readOnly
@@ -251,7 +316,10 @@ const DashboardPage = () => {
   const [revenueLoading, setRevenueLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  // FIX: Thêm state theo dõi trạng thái socket
+  const [socketConnected, setSocketConnected] = useState(false);
 
+  // Load map lần đầu
   useEffect(() => {
     const fetchMap = async () => {
       try {
@@ -268,65 +336,13 @@ const DashboardPage = () => {
           })),
         );
         setZoneOptions(zonesFromMap);
+
         const mapped = {
           metadata: { gridRealSize: 2.5, unit: 'm' },
           parking: {
             floors: (item.floors || [])
               .filter((floor) => floor.status === 1)
-              .map((floor) => ({
-              id: floor.code,
-              name: floor.nameFloor,
-              boundary: floor.boundary || { points: [], closed: false },
-              standaloneSlots: [],
-              ...parseLegacyLanesToGraph(floor.lanes || [], floor.laneNodes || []),
-              entrances: (floor.entrances || []).map((e) => ({
-                id: e.code,
-                x: e.positionX,
-                y: e.positionY,
-                width: e.witdh,
-                height: e.height,
-                rotation: e.rotation,
-              })),
-              exits: (floor.exits || []).map((e) => ({
-                id: e.code,
-                x: e.positionX,
-                y: e.positionY,
-                width: e.witdh,
-                height: e.height,
-                rotation: e.rotation,
-              })),
-              zones: (floor.zones || []).map((zone) => ({
-                id: zone.code,
-                name: zone.nameZone,
-                color: zone.color || '#3b82f6',
-                points: zone.points,
-                slotGroups: (zone.groupSlots || []).map((group) => ({
-                  id: group.code,
-                  x: group.positionX,
-                  y: group.positionY,
-                  width: group.width,
-                  height: group.height,
-                  rotation: group.rotation,
-                  direction: group.direction,
-                  slots: (group.slots || []).map((slot) => ({
-                    id: slot._id,
-                    code: slot.code,
-                    status:
-                      slot.status === 0
-                        ? 'available'
-                        : slot.status === 1
-                          ? 'occupied'
-                          : slot.status === 2
-                            ? 'reserved'
-                            : slot.status === 3
-                              ? 'inactive'
-                              : 'available',
-                    sensorId: slot.sensorId,
-                    sensorStatus: slot.sensorStatus,
-                  })),
-                })),
-              })),
-            })),
+              .map(mapFloorData),
           },
         };
         setMapData(mapped);
@@ -340,97 +356,8 @@ const DashboardPage = () => {
     fetchMap();
   }, []);
 
-  useEffect(() => {
-    let intervalId;
-
-    const fetchMapSilently = async () => {
-      try {
-        const res = await axiosClient.post(PARKING_API.GET_LIST, {});
-        const list = res?.data || res;
-
-        if (!list || list.length === 0) return;
-
-        const item = list[0];
-
-        const mapped = {
-          metadata: { gridRealSize: 2.5, unit: 'm' },
-          parking: {
-            floors: (item.floors || [])
-              .filter((floor) => floor.status === 1)
-              .map((floor) => ({
-              id: floor.code,
-              name: floor.nameFloor,
-              boundary: floor.boundary || { points: [], closed: false },
-              standaloneSlots: [],
-              ...parseLegacyLanesToGraph(floor.lanes || [], floor.laneNodes || []),
-              entrances: (floor.entrances || []).map((e) => ({
-                id: e.code,
-                x: e.positionX,
-                y: e.positionY,
-                width: e.witdh,
-                height: e.height,
-                rotation: e.rotation,
-              })),
-              exits: (floor.exits || []).map((e) => ({
-                id: e.code,
-                x: e.positionX,
-                y: e.positionY,
-                width: e.witdh,
-                height: e.height,
-                rotation: e.rotation,
-              })),
-              zones: (floor.zones || []).map((zone) => ({
-                id: zone.code,
-                name: zone.nameZone,
-                color: zone.color || '#3b82f6',
-                points: zone.points,
-                slotGroups: (zone.groupSlots || []).map((group) => ({
-                  id: group.code,
-                  x: group.positionX,
-                  y: group.positionY,
-                  width: group.width,
-                  height: group.height,
-                  rotation: group.rotation,
-                  direction: group.direction,
-                  slots: (group.slots || []).map((slot) => ({
-                    id: slot._id,
-                    code: slot.code,
-                    status:
-                      slot.status === 0
-                        ? 'available'
-                        : slot.status === 1
-                          ? 'occupied'
-                          : slot.status === 2
-                            ? 'reserved'
-                            : slot.status === 3
-                              ? 'inactive'
-                              : 'available',
-                    sensorId: slot.sensorId,
-                    sensorStatus: slot.sensorStatus,
-                  })),
-                })),
-              })),
-            })),
-          },
-        };
-
-        // ⚠️ tránh re-render nếu data giống nhau (optional optimize)
-        setMapData((prev) => {
-          if (!prev) return mapped;
-          return JSON.stringify(prev) === JSON.stringify(mapped) ? prev : mapped;
-        });
-      } catch (err) {
-        console.error('Polling map error:', err);
-      }
-    };
-
-    // chạy mỗi 2 giây
-    intervalId = setInterval(fetchMapSilently, 2000);
-
-    return () => {
-      clearInterval(intervalId); // cleanup
-    };
-  }, []);
+  // FIX: Xoá hoàn toàn useEffect polling (setInterval 2000ms) vì nó conflict với socket
+  // Socket sẽ đảm nhiệm việc cập nhật realtime
 
   useEffect(() => {
     const fetchStatistical = async () => {
@@ -504,10 +431,10 @@ const DashboardPage = () => {
         const payload =
           revenueType === 'custom'
             ? {
-                type: 'custom',
-                startDate: revenueCustomRange[0].format('YYYY-MM-DD'),
-                endDate: revenueCustomRange[1].format('YYYY-MM-DD'),
-              }
+              type: 'custom',
+              startDate: revenueCustomRange[0].format('YYYY-MM-DD'),
+              endDate: revenueCustomRange[1].format('YYYY-MM-DD'),
+            }
             : { type: revenueType };
 
         const res = await axiosClient.post(REVENUE_API.GET_REVENUE, payload);
@@ -526,19 +453,49 @@ const DashboardPage = () => {
     fetchRevenue();
   }, [revenueType, revenueCustomRange]);
 
+  // FIX: Socket được viết lại hoàn toàn
+  const SOCKET_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+
   useEffect(() => {
-    const socket = io('https://be-smartparking.onrender.com', {
-      transports: ['websocket'],
+    const socket = io(SOCKET_URL, {
+      // FIX: Thêm 'polling' làm fallback — quan trọng cho Render.com vì server có thể sleep
+      transports: ['websocket', 'polling'],
+      // FIX: Cấu hình reconnect để tự kết nối lại khi backend sleep/restart
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
     });
 
     socketRef.current = socket;
 
+    // FIX: Theo dõi trạng thái kết nối
+    socket.on('connect', () => {
+      console.log('✅ Socket connected');
+      setSocketConnected(true);
+    });
+    socket.on('disconnect', (reason) => {
+      console.log('❌ Socket disconnected:', reason);
+      setSocketConnected(false);
+    });
+    socket.on('connect_error', (err) => {
+      console.error('Socket connect error:', err);
+      setSocketConnected(false);
+    });
+    // Thêm listener thử nghiệm
+    socket.on('connect', () => {
+      socket.emit('ping', 'Hello server');
+    });
+
     socket.on('slot:update', (data) => {
-      const { slotId, sensorStatus } = data;
-      const isOccupied = sensorStatus === true || sensorStatus === 1;
+      const { slotId, slotStatus } = data;
+
+      // Debug: bỏ comment dòng dưới nếu cần kiểm tra data nhận được
+      // console.log('[socket] slot:update', data);
 
       setMapData((prev) => {
         if (!prev) return prev;
+
         const newFloors = prev.parking.floors.map((floor) => ({
           ...floor,
           zones: floor.zones.map((zone) => ({
@@ -546,17 +503,19 @@ const DashboardPage = () => {
             slotGroups: zone.slotGroups.map((group) => ({
               ...group,
               slots: group.slots.map((slot) =>
-                slot.id === slotId
+                // FIX: Dùng .toString() để đảm bảo so sánh đúng kiểu string vs string
+                slot.id?.toString() === slotId
                   ? {
-                      ...slot,
-                      sensorStatus: isOccupied,
-                      status: isOccupied ? 'occupied' : 'available',
-                    }
+                    ...slot,
+                    // FIX: Dùng slotStatus (số 0/1/2/3) từ backend thay vì sensorStatus (boolean)
+                    status: STATUS_MAP[slotStatus] ?? slot.status,
+                  }
                   : slot,
               ),
             })),
           })),
         }));
+
         return { ...prev, parking: { ...prev.parking, floors: newFloors } };
       });
     });
@@ -568,8 +527,8 @@ const DashboardPage = () => {
 
   const allSlotsGlobal = mapData
     ? mapData.parking.floors.flatMap((f) =>
-        f.zones.flatMap((z) => (z.slotGroups || []).flatMap((g) => g.slots || [])),
-      )
+      f.zones.flatMap((z) => (z.slotGroups || []).flatMap((g) => g.slots || [])),
+    )
     : [];
 
   const pieData = [
@@ -747,7 +706,21 @@ const DashboardPage = () => {
   return (
     <Spin spinning={isLoading}>
       <div style={{ padding: 24, background: '#f0f2f5', minHeight: '100vh' }}>
-        <Title level={4}>{t('dashboard.title')}</Title>
+        {/* FIX: Title row với socket status indicator */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <Title level={4} style={{ margin: 0 }}>{t('dashboard.title')}</Title>
+          <Space>
+            <WifiOutlined style={{ color: socketConnected ? '#52c41a' : '#ff4d4f' }} />
+            <Badge
+              status={socketConnected ? 'processing' : 'error'}
+              text={
+                <Text style={{ fontSize: 12, color: socketConnected ? '#52c41a' : '#ff4d4f' }}>
+                  {socketConnected ? 'Live' : 'Offline'}
+                </Text>
+              }
+            />
+          </Space>
+        </div>
 
         {/* Filter Card */}
         <Card style={{ marginBottom: 16, borderRadius: 10 }} bordered={false}>
