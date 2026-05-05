@@ -11,14 +11,21 @@ import {
   ConfigProvider,
   Statistic,
   Empty,
+  Alert,
   Spin,
   message,
+  notification,
   DatePicker,
   Select,
   Button,
   Badge,
 } from 'antd';
-import { ExpandOutlined, FilePdfOutlined, FileExcelOutlined, WifiOutlined } from '@ant-design/icons';
+import {
+  ExpandOutlined,
+  FilePdfOutlined,
+  FileExcelOutlined,
+  WifiOutlined,
+} from '@ant-design/icons';
 import {
   PieChart,
   Pie,
@@ -34,9 +41,12 @@ import {
   BarChart,
   Bar,
 } from 'recharts';
-import axiosClient from '../../../../c-lib/axios/axiosClient.service';
+import { io } from 'socket.io-client';
 import dayjs from 'dayjs';
+
+import axiosClient from '../../../../c-lib/axios/axiosClient.service';
 import {
+  CONFLICT_API,
   EXPORT_API,
   PARKING_API,
   STATISTICAL_API,
@@ -44,38 +54,46 @@ import {
   REVENUE_API,
 } from '../../../../c-lib/api';
 import EditorCanvas from '../../../c-map/pages/editor/EditorCanvas';
-import { io } from 'socket.io-client';
 import { useAdminI18n } from '../../../../c-lib/i18n/adminI18n';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
+const SOCKET_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+
 const DEFAULT_DATE_RANGE = [dayjs().startOf('month'), dayjs()];
 const DEFAULT_REVENUE_CUSTOM_RANGE = [dayjs().startOf('month'), dayjs()];
-const CURRENCY_FORMATTER = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
 
-const STATUS_MAP = {
+const CURRENCY_FORMATTER = new Intl.NumberFormat('vi-VN', {
+  style: 'currency',
+  currency: 'VND',
+});
+
+const SLOT_STATUS_MAP = {
   0: 'available',
   1: 'occupied',
   2: 'reserved',
   3: 'inactive',
 };
 
-const safeNumber = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
-const formatCurrency = (value) => CURRENCY_FORMATTER.format(safeNumber(value));
-
 const EXPORT_FORMAT_CONFIG = {
   pdf: {
     extension: 'pdf',
     mimeType: 'application/pdf',
-    successMessage: 'Exported parking report as PDF',
   },
   excel: {
     extension: 'xlsx',
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    successMessage: 'Exported parking report as Excel',
   },
 };
+
+// ─── Pure helpers ─────────────────────────────────────────────────────────────
+
+const safeNumber = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
+
+const formatCurrency = (value) => CURRENCY_FORMATTER.format(safeNumber(value));
 
 const getFirstAvailableArray = (source, keys) => {
   if (!source || typeof source !== 'object') return [];
@@ -86,41 +104,34 @@ const getFirstAvailableArray = (source, keys) => {
 };
 
 const getLabelFromItem = (item, fallbackIndex) =>
-  item?.label ||
-  item?.period ||
-  item?.date ||
-  item?.month ||
-  item?.day ||
-  item?.time ||
-  item?.name ||
+  item?.label ??
+  item?.period ??
+  item?.date ??
+  item?.month ??
+  item?.day ??
+  item?.time ??
+  item?.name ??
   `Point ${fallbackIndex + 1}`;
 
 const getFilenameFromDisposition = (contentDisposition, fallbackFilename) => {
   if (!contentDisposition) return fallbackFilename;
-
   const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
-  if (utf8Match?.[1]) {
-    return decodeURIComponent(utf8Match[1]);
-  }
-
+  if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1]);
   const asciiMatch = contentDisposition.match(/filename="?([^"]+)"?/i);
-  if (asciiMatch?.[1]) {
-    return asciiMatch[1];
-  }
-
+  if (asciiMatch?.[1]) return asciiMatch[1];
   return fallbackFilename;
 };
+
+const escapeCsvCell = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
 
 const parseBlobErrorMessage = async (error) => {
   const blob = error?.response?.data;
   if (!(blob instanceof Blob)) {
     return error?.response?.data?.message || error?.message || null;
   }
-
   try {
     const text = await blob.text();
     if (!text) return error?.message || null;
-
     try {
       const parsed = JSON.parse(text);
       return parsed?.message || parsed?.error || error?.message || null;
@@ -132,23 +143,21 @@ const parseBlobErrorMessage = async (error) => {
   }
 };
 
-const translateExportErrorMessage = (messageText) => {
-  if (!messageText) return 'Failed to export parking report';
-
-  if (messageText.includes('Không có dữ liệu cho các bộ lọc đã chọn')) {
+const translateExportErrorMessage = (msg) => {
+  if (!msg) return 'Failed to export parking report';
+  if (msg.includes('Không có dữ liệu cho các bộ lọc đã chọn')) {
     return 'No data matches the selected filters. Export was cancelled.';
   }
-
-  return messageText;
+  return msg;
 };
 
-const escapeCsvCell = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+// ─── Map data helpers ─────────────────────────────────────────────────────────
 
 const parseLegacyLanesToGraph = (lanesApiData, apiNodes = []) => {
   const laneNodes = [];
   const laneEdges = [];
-
   const mongoIdToCode = {};
+
   apiNodes.forEach((n) => {
     laneNodes.push({ id: n.code, x: n.positionX, y: n.positionY });
     if (n._id) mongoIdToCode[n._id] = n.code;
@@ -167,36 +176,32 @@ const parseLegacyLanesToGraph = (lanesApiData, apiNodes = []) => {
         laneNodes.push({ id: fromNodeId, x: pts[0], y: pts[1] });
       if (!laneNodes.find((n) => n.id === toNodeId))
         laneNodes.push({ id: toNodeId, x: pts[pts.length - 2], y: pts[pts.length - 1] });
-
-      if (!laneEdges.find((e) => e.fromNodeId === fromNodeId && e.toNodeId === toNodeId)) {
+      if (!laneEdges.find((e) => e.fromNodeId === fromNodeId && e.toNodeId === toNodeId))
         laneEdges.push({ id: l.code, fromNodeId, toNodeId, width: w });
-      }
     } else {
       const TOLERANCE = 15;
       let prevNodeId = null;
       for (let j = 0; j < pts.length; j += 2) {
-        const x = pts[j],
-          y = pts[j + 1];
+        const x = pts[j];
+        const y = pts[j + 1];
         let node = laneNodes.find((n) => Math.hypot(n.x - x, n.y - y) < TOLERANCE);
         if (!node) {
           node = { id: `node-${l.code || i}-${j}`, x, y };
           laneNodes.push(node);
         }
         if (prevNodeId && prevNodeId !== node.id) {
-          if (
-            !laneEdges.find(
-              (e) =>
-                (e.fromNodeId === prevNodeId && e.toNodeId === node.id) ||
-                (e.fromNodeId === node.id && e.toNodeId === prevNodeId),
-            )
-          ) {
+          const exists = laneEdges.find(
+            (e) =>
+              (e.fromNodeId === prevNodeId && e.toNodeId === node.id) ||
+              (e.fromNodeId === node.id && e.toNodeId === prevNodeId),
+          );
+          if (!exists)
             laneEdges.push({
               id: `edge-${l.code || i}-${j}`,
               fromNodeId: prevNodeId,
               toNodeId: node.id,
               width: w,
             });
-          }
         }
         prevNodeId = node.id;
       }
@@ -206,7 +211,17 @@ const parseLegacyLanesToGraph = (lanesApiData, apiNodes = []) => {
   return { laneNodes, laneEdges };
 };
 
-// Helper để map floor data từ API response
+const mapSlotStatus = (status) =>
+  status === 0
+    ? 'available'
+    : status === 1
+      ? 'occupied'
+      : status === 2
+        ? 'reserved'
+        : status === 3
+          ? 'inactive'
+          : 'available';
+
 const mapFloorData = (floor) => ({
   id: floor.code,
   name: floor.nameFloor,
@@ -243,18 +258,9 @@ const mapFloorData = (floor) => ({
       rotation: group.rotation,
       direction: group.direction,
       slots: (group.slots || []).map((slot) => ({
-        id: slot._id?.toString(),   // Luôn convert sang string để so sánh với slotId từ socket
+        id: slot._id?.toString(),
         code: slot.code,
-        status:
-          slot.status === 0
-            ? 'available'
-            : slot.status === 1
-              ? 'occupied'
-              : slot.status === 2
-                ? 'reserved'
-                : slot.status === 3
-                  ? 'inactive'
-                  : 'available',
+        status: mapSlotStatus(slot.status),
         sensorId: slot.sensorId,
         sensorStatus: slot.sensorStatus,
       })),
@@ -262,9 +268,10 @@ const mapFloorData = (floor) => ({
   })),
 });
 
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
 const FloorMapView = ({ floor, metadata }) => {
   const [scale, setScale] = useState(0.5);
-  const [editorMode] = useState('PAN');
 
   return (
     <EditorCanvas
@@ -276,22 +283,22 @@ const FloorMapView = ({ floor, metadata }) => {
       exits={floor.exits || []}
       boundary={floor.boundary || { points: [], closed: false }}
       selectedEntity={null}
-      onSelect={() => { }}
-      onUpdateZone={() => { }}
-      onUpdateSlotGroup={() => { }}
-      onUpdateStandaloneSlot={() => { }}
-      onUpdateLane={() => { }}
-      onUpdateEntrance={() => { }}
-      onUpdateExit={() => { }}
-      onDrop={() => { }}
+      onSelect={() => {}}
+      onUpdateZone={() => {}}
+      onUpdateSlotGroup={() => {}}
+      onUpdateStandaloneSlot={() => {}}
+      onUpdateLane={() => {}}
+      onUpdateEntrance={() => {}}
+      onUpdateExit={() => {}}
+      onDrop={() => {}}
       scale={scale}
       setScale={setScale}
-      onUpdateBoundary={() => { }}
-      onFinishBoundary={() => { }}
-      editorMode={editorMode}
+      onUpdateBoundary={() => {}}
+      onFinishBoundary={() => {}}
+      editorMode="PAN"
       draftZone={{ points: [], closed: false }}
-      setDraftZone={() => { }}
-      onFinishZone={() => { }}
+      setDraftZone={() => {}}
+      onFinishZone={() => {}}
       gridRealSize={metadata?.gridRealSize || 2.5}
       parkingUnit={metadata?.unit || 'm'}
       readOnly
@@ -299,9 +306,14 @@ const FloorMapView = ({ floor, metadata }) => {
   );
 };
 
+// ─── Main component ───────────────────────────────────────────────────────────
+
 const DashboardPage = () => {
-  const { t } = useAdminI18n();
+  const { t, language } = useAdminI18n();
   const socketRef = useRef(null);
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [isLoading, setIsLoading] = useState(true);
   const [mapData, setMapData] = useState(null);
   const [statsData, setStatsData] = useState(null);
   const [turnoverData, setTurnoverData] = useState(null);
@@ -315,18 +327,21 @@ const DashboardPage = () => {
   const [turnoverLoading, setTurnoverLoading] = useState(false);
   const [revenueLoading, setRevenueLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  // FIX: Thêm state theo dõi trạng thái socket
   const [socketConnected, setSocketConnected] = useState(false);
+  const [conflictInfo, setConflictInfo] = useState(null);
+  const conflictStatusRef = useRef(false);
 
-  // Load map lần đầu
+  // ── Derived ────────────────────────────────────────────────────────────────
+  const conflictMessage =
+    language === 'vi' ? 'Phát hiện xung đột đỗ xe' : 'Parking Conflict Detected';
+
+  // ── Effects: load map ──────────────────────────────────────────────────────
   useEffect(() => {
     const fetchMap = async () => {
       try {
         const res = await axiosClient.post(PARKING_API.GET_LIST, {});
         const list = res?.data || res;
-
-        if (!list || list.length === 0) return;
+        if (!list?.length) return;
 
         const item = list[0];
         const zonesFromMap = (item.floors || []).flatMap((floor) =>
@@ -336,16 +351,12 @@ const DashboardPage = () => {
           })),
         );
         setZoneOptions(zonesFromMap);
-
-        const mapped = {
+        setMapData({
           metadata: { gridRealSize: 2.5, unit: 'm' },
           parking: {
-            floors: (item.floors || [])
-              .filter((floor) => floor.status === 1)
-              .map(mapFloorData),
+            floors: (item.floors || []).filter((f) => f.status === 1).map(mapFloorData),
           },
-        };
-        setMapData(mapped);
+        });
       } catch (err) {
         message.error(t('dashboard.failedToLoadMap', { message: err.message }));
       } finally {
@@ -356,13 +367,11 @@ const DashboardPage = () => {
     fetchMap();
   }, []);
 
-  // FIX: Xoá hoàn toàn useEffect polling (setInterval 2000ms) vì nó conflict với socket
-  // Socket sẽ đảm nhiệm việc cập nhật realtime
-
+  // ── Effects: statistics ────────────────────────────────────────────────────
   useEffect(() => {
-    const fetchStatistical = async () => {
-      if (!dateRange || dateRange.length !== 2) return;
+    if (!dateRange?.length === 2) return;
 
+    const fetchStatistical = async () => {
       setStatsLoading(true);
       try {
         const res = await axiosClient.post(STATISTICAL_API.GET_STATISTICAL, {
@@ -370,7 +379,6 @@ const DashboardPage = () => {
           expectedLeaveTime: dateRange[1].toISOString(),
           zoneIds: selectedZoneIds,
         });
-
         const zones = res?.data || [];
         const aggregated = zones.reduce(
           (acc, zone) => ({
@@ -382,12 +390,7 @@ const DashboardPage = () => {
           }),
           { totalSlots: 0, available: 0, occupied: 0, percentEmptySum: 0, percentUsedSum: 0 },
         );
-
-        setStatsData({
-          ...aggregated,
-          zoneCount: zones.length,
-          zones,
-        });
+        setStatsData({ ...aggregated, zoneCount: zones.length, zones });
       } catch (err) {
         message.error(
           err?.response?.data?.message || err.message || t('dashboard.failedToLoadStatisticalData'),
@@ -400,10 +403,11 @@ const DashboardPage = () => {
     fetchStatistical();
   }, [selectedZoneIds, dateRange]);
 
+  // ── Effects: turnover ──────────────────────────────────────────────────────
   useEffect(() => {
-    const fetchTurnover = async () => {
-      if (!dateRange || dateRange.length !== 2) return;
+    if (!dateRange?.length === 2) return;
 
+    const fetchTurnover = async () => {
       setTurnoverLoading(true);
       try {
         const res = await axiosClient.post(TURNOVER_API.GET_TURNOVER, {
@@ -424,17 +428,20 @@ const DashboardPage = () => {
     fetchTurnover();
   }, [selectedZoneIds, dateRange]);
 
+  // ── Effects: revenue ───────────────────────────────────────────────────────
   useEffect(() => {
+    if (revenueType === 'custom' && revenueCustomRange?.length !== 2) return;
+
     const fetchRevenue = async () => {
       setRevenueLoading(true);
       try {
         const payload =
           revenueType === 'custom'
             ? {
-              type: 'custom',
-              startDate: revenueCustomRange[0].format('YYYY-MM-DD'),
-              endDate: revenueCustomRange[1].format('YYYY-MM-DD'),
-            }
+                type: 'custom',
+                startDate: revenueCustomRange[0].format('YYYY-MM-DD'),
+                endDate: revenueCustomRange[1].format('YYYY-MM-DD'),
+              }
             : { type: revenueType };
 
         const res = await axiosClient.post(REVENUE_API.GET_REVENUE, payload);
@@ -448,88 +455,124 @@ const DashboardPage = () => {
       }
     };
 
-    if (revenueType === 'custom' && (!revenueCustomRange || revenueCustomRange.length !== 2))
-      return;
     fetchRevenue();
   }, [revenueType, revenueCustomRange]);
 
-  // FIX: Socket được viết lại hoàn toàn
-  const SOCKET_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+  // ── Effects: conflict polling ──────────────────────────────────────────────
+  useEffect(() => {
+    let isMounted = true;
+    conflictStatusRef.current = false;
 
+    const validateConflict = async () => {
+      let payload = null;
+      try {
+        payload = await axiosClient
+          .post(CONFLICT_API.VALIDATE_CONFLICT, {})
+          .catch(() => axiosClient.get(CONFLICT_API.VALIDATE_CONFLICT));
+      } catch {}
+
+      if (!isMounted) return;
+
+      const data = payload?.data || {};
+      const isConflict = Boolean(data?.isConflict);
+      const wasConflict = conflictStatusRef.current;
+      conflictStatusRef.current = isConflict;
+
+      setConflictInfo(
+        isConflict
+          ? {
+              message: language === 'vi' ? data.message || conflictMessage : conflictMessage,
+              totalOccupied: data.totalOccupied ?? 0,
+              totalActiveSessions: data.totalActiveSessions ?? 0,
+            }
+          : null,
+      );
+
+      if (isConflict && !wasConflict) {
+        notification.error({
+          key: 'parking-conflict',
+          message: language === 'vi' ? data.message || conflictMessage : conflictMessage,
+          description:
+            language === 'vi'
+              ? `Số chỗ đang chiếm: ${data.totalOccupied ?? 0} — Phiên đang hoạt động: ${data.totalActiveSessions ?? 0}`
+              : `Occupied slots: ${data.totalOccupied ?? 0} — Active sessions: ${data.totalActiveSessions ?? 0}`,
+          duration: 0,
+          placement: 'topRight',
+        });
+      }
+
+      if (!isConflict && wasConflict) {
+        notification.destroy('parking-conflict');
+      }
+    };
+
+    validateConflict();
+    const id = setInterval(validateConflict, 5_000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(id);
+    };
+  }, [language]); // re-subscribe when language changes so messages use correct locale
+
+  // ── Effects: socket ────────────────────────────────────────────────────────
   useEffect(() => {
     const socket = io(SOCKET_URL, {
-      // FIX: Thêm 'polling' làm fallback — quan trọng cho Render.com vì server có thể sleep
       transports: ['websocket', 'polling'],
-      // FIX: Cấu hình reconnect để tự kết nối lại khi backend sleep/restart
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 2000,
-      reconnectionDelayMax: 10000,
+      reconnectionDelayMax: 10_000,
     });
 
     socketRef.current = socket;
 
-    // FIX: Theo dõi trạng thái kết nối
     socket.on('connect', () => {
-      console.log('✅ Socket connected');
       setSocketConnected(true);
-    });
-    socket.on('disconnect', (reason) => {
-      console.log('❌ Socket disconnected:', reason);
-      setSocketConnected(false);
-    });
-    socket.on('connect_error', (err) => {
-      console.error('Socket connect error:', err);
-      setSocketConnected(false);
-    });
-    // Thêm listener thử nghiệm
-    socket.on('connect', () => {
       socket.emit('ping', 'Hello server');
     });
+    socket.on('disconnect', () => setSocketConnected(false));
+    socket.on('connect_error', () => setSocketConnected(false));
 
-    socket.on('slot:update', (data) => {
-      const { slotId, slotStatus } = data;
-
-      // Debug: bỏ comment dòng dưới nếu cần kiểm tra data nhận được
-      // console.log('[socket] slot:update', data);
-
+    socket.on('slot:update', ({ slotId, slotStatus }) => {
       setMapData((prev) => {
         if (!prev) return prev;
-
-        const newFloors = prev.parking.floors.map((floor) => ({
-          ...floor,
-          zones: floor.zones.map((zone) => ({
-            ...zone,
-            slotGroups: zone.slotGroups.map((group) => ({
-              ...group,
-              slots: group.slots.map((slot) =>
-                // FIX: Dùng .toString() để đảm bảo so sánh đúng kiểu string vs string
-                slot.id?.toString() === slotId
-                  ? {
-                    ...slot,
-                    // FIX: Dùng slotStatus (số 0/1/2/3) từ backend thay vì sensorStatus (boolean)
-                    status: STATUS_MAP[slotStatus] ?? slot.status,
-                  }
-                  : slot,
-              ),
+        return {
+          ...prev,
+          parking: {
+            ...prev.parking,
+            floors: prev.parking.floors.map((floor) => ({
+              ...floor,
+              zones: floor.zones.map((zone) => ({
+                ...zone,
+                slotGroups: zone.slotGroups.map((group) => ({
+                  ...group,
+                  slots: group.slots.map((slot) =>
+                    slot.id?.toString() === slotId
+                      ? { ...slot, status: SLOT_STATUS_MAP[slotStatus] ?? slot.status }
+                      : slot,
+                  ),
+                })),
+              })),
             })),
-          })),
-        }));
-
-        return { ...prev, parking: { ...prev.parking, floors: newFloors } };
+          },
+        };
       });
     });
 
-    return () => {
-      socket.disconnect();
-    };
+    return () => socket.disconnect();
   }, []);
 
-  const allSlotsGlobal = mapData
-    ? mapData.parking.floors.flatMap((f) =>
-      f.zones.flatMap((z) => (z.slotGroups || []).flatMap((g) => g.slots || [])),
-    )
-    : [];
+  // ── Derived data ───────────────────────────────────────────────────────────
+  const allSlotsGlobal = useMemo(
+    () =>
+      mapData
+        ? mapData.parking.floors.flatMap((f) =>
+            f.zones.flatMap((z) => (z.slotGroups || []).flatMap((g) => g.slots || [])),
+          )
+        : [],
+    [mapData],
+  );
 
   const pieData = [
     {
@@ -553,6 +596,7 @@ const DashboardPage = () => {
     const points = Array.isArray(root)
       ? root
       : getFirstAvailableArray(root, ['breakdown', 'series', 'details', 'items', 'list', 'rows']);
+
     if (points.length > 0) {
       return points.map((item, index) => ({
         name: getLabelFromItem(item, index),
@@ -560,6 +604,7 @@ const DashboardPage = () => {
         sessions: safeNumber(item.totalSessions ?? item.sessions ?? item.count),
       }));
     }
+
     return [
       {
         name: revenueType === 'day' ? 'Today' : revenueType === 'month' ? 'This Month' : 'Custom',
@@ -574,6 +619,7 @@ const DashboardPage = () => {
     const points = Array.isArray(root)
       ? root
       : getFirstAvailableArray(root, ['breakdown', 'series', 'details', 'items', 'list', 'rows']);
+
     if (points.length > 0) {
       return points.map((item, index) => ({
         name: getLabelFromItem(item, index),
@@ -581,6 +627,7 @@ const DashboardPage = () => {
         turnoverRate: safeNumber(item.turnover ?? item.rate ?? item.turnoverRate) * 100,
       }));
     }
+
     return [
       {
         name: 'Summary',
@@ -590,9 +637,11 @@ const DashboardPage = () => {
     ];
   }, [turnoverData]);
 
+  // ── Handlers ───────────────────────────────────────────────────────────────
   const handleExportReport = async (format) => {
     const config = EXPORT_FORMAT_CONFIG[format];
     if (!config) return;
+
     if (!dateRange || dateRange.length !== 2) {
       message.warning(t('dashboard.invalidStatisticalRange'));
       return;
@@ -601,7 +650,7 @@ const DashboardPage = () => {
       message.info(t('dashboard.statsStillLoading'));
       return;
     }
-    if (statsData && (!statsData.zones || statsData.zones.length === 0)) {
+    if (statsData && !statsData.zones?.length) {
       message.warning(t('dashboard.noStatsToExport'));
       return;
     }
@@ -616,10 +665,7 @@ const DashboardPage = () => {
           zoneIds: selectedZoneIds,
           format,
         },
-        {
-          responseType: 'blob',
-          _returnFullResponse: true,
-        },
+        { responseType: 'blob', _returnFullResponse: true },
       );
 
       const blob = new Blob([response.data], {
@@ -638,6 +684,7 @@ const DashboardPage = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+
       message.success(
         format === 'pdf' ? t('dashboard.exportedParkingPdf') : t('dashboard.exportedParkingExcel'),
       );
@@ -703,12 +750,22 @@ const DashboardPage = () => {
     message.success(t('dashboard.exportedDashboardCsv'));
   };
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <Spin spinning={isLoading}>
       <div style={{ padding: 24, background: '#f0f2f5', minHeight: '100vh' }}>
-        {/* FIX: Title row với socket status indicator */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <Title level={4} style={{ margin: 0 }}>{t('dashboard.title')}</Title>
+        {/* Header */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 16,
+          }}
+        >
+          <Title level={4} style={{ margin: 0 }}>
+            {t('dashboard.title')}
+          </Title>
           <Space>
             <WifiOutlined style={{ color: socketConnected ? '#52c41a' : '#ff4d4f' }} />
             <Badge
@@ -722,7 +779,22 @@ const DashboardPage = () => {
           </Space>
         </div>
 
-        {/* Filter Card */}
+        {/* Conflict inline alert — always visible in page while conflict persists */}
+        {conflictInfo && (
+          <Alert
+            type="error"
+            showIcon
+            message={conflictInfo.message}
+            description={
+              language === 'vi'
+                ? `Số chỗ đang chiếm: ${conflictInfo.totalOccupied} — Phiên đang hoạt động: ${conflictInfo.totalActiveSessions}`
+                : `Occupied slots: ${conflictInfo.totalOccupied} — Active sessions: ${conflictInfo.totalActiveSessions}`
+            }
+            style={{ marginBottom: 16 }}
+          />
+        )}
+
+        {/* Filters */}
         <Card style={{ marginBottom: 16, borderRadius: 10 }} bordered={false}>
           <Row gutter={[16, 16]} align="middle">
             <Col xs={24} md={8}>
@@ -768,9 +840,9 @@ const DashboardPage = () => {
           </Row>
         </Card>
 
-        {/* 3 Cards — equal width, side by side */}
+        {/* Metric cards */}
         <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          {/* Card 1: Status Overview */}
+          {/* Status Overview */}
           <Col xs={24} xl={8}>
             <Card
               title={
@@ -781,7 +853,6 @@ const DashboardPage = () => {
               style={{
                 background: '#1a1a2e',
                 borderRadius: 10,
-                color: 'white',
                 height: '100%',
                 position: 'relative',
               }}
@@ -862,14 +933,13 @@ const DashboardPage = () => {
                   <Divider style={{ borderColor: '#333', margin: '16px 0' }} />
                 </div>
               </Spin>
-
               <ExpandOutlined
                 style={{ position: 'absolute', bottom: 16, right: 16, color: 'gray', fontSize: 16 }}
               />
             </Card>
           </Col>
 
-          {/* Card 2: Turnover */}
+          {/* Turnover */}
           <Col xs={24} xl={8}>
             <Card
               title={t('dashboard.turnover')}
@@ -912,7 +982,7 @@ const DashboardPage = () => {
             </Card>
           </Col>
 
-          {/* Card 3: Revenue */}
+          {/* Revenue */}
           <Col xs={24} xl={8}>
             <Card
               title={t('dashboard.revenue')}
@@ -974,7 +1044,7 @@ const DashboardPage = () => {
           </Col>
         </Row>
 
-        {/* Parking Map */}
+        {/* Parking map */}
         <Title level={4}>{t('dashboard.parkingMap')}</Title>
         <Divider style={{ marginTop: 0, marginBottom: 16 }} />
 

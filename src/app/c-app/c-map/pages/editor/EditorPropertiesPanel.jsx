@@ -81,8 +81,8 @@ const EditorPropertiesPanel = ({
     }
 
     if (selectedType === 'ZONE') {
-      if (selectedData?.status !== 2) {
-        return 'Zone can only be deleted when its status is Inactive.';
+      if (![0, 2].includes(selectedData?.status)) {
+        return 'Zone can only be deleted when its status is Editing or Inactive.';
       }
     }
 
@@ -93,7 +93,7 @@ const EditorPropertiesPanel = ({
     (selectedType === 'SLOT' &&
       selectedData?.dbStatus === 'inactive' &&
       !selectedData?.sensorCode) ||
-    (selectedType === 'ZONE' && selectedData?.status === 2) ||
+    (selectedType === 'ZONE' && [0, 2].includes(selectedData?.status)) ||
     !['SLOT', 'ZONE'].includes(selectedType);
 
   return (

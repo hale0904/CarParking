@@ -18,6 +18,7 @@ import './parkingMapEditor.scss';
 import axiosClient from '../../../c-lib/axios/axiosClient.service';
 import { PARKING_API } from '../../../c-lib/api/parking.api';
 import { io } from 'socket.io-client';
+import { useAdminI18n } from '../../../c-lib/i18n/adminI18n';
 
 const SLOT_SIZE = { width: 25, height: 40 };
 const SLOT_GAP = 3;
@@ -180,6 +181,7 @@ const cloneFloorLayoutFromTemplate = (templateFloor) => {
 };
 
 const ParkingMapEditor = () => {
+  const { language } = useAdminI18n();
   const { saveMap } = useParkingMapStorage();
   const [isEditorActive, setIsEditorActive] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -1204,11 +1206,11 @@ const ParkingMapEditor = () => {
       const grandParentId = selectedEntity.grandParentId;
 
       Modal.confirm({
-        title: 'Xác nhận xóa slot',
-        content: `Slot "${slotLabel}" sẽ bị xóa. Tiếp tục?`,
-        okText: 'Xóa',
+        title: 'Confirm slot deletion',
+        content: `Slot "${slotLabel}" will be deleted. Continue?`,
+        okText: 'Delete',
         okType: 'danger',
-        cancelText: 'Hủy',
+        cancelText: 'Cancel',
         onOk: () => {
           // Xóa ngay từ state
           if (!parentId) {
@@ -1231,7 +1233,7 @@ const ParkingMapEditor = () => {
             );
           }
           setSelectedEntity(null);
-          message.success('Slot đã bị xóa. Nhấn Save Map để lưu.');
+          message.success('Slot has been deleted. Click Save Map to save.');
         },
       });
       return;
