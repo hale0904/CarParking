@@ -505,14 +505,56 @@ const ParkingMapEditor = () => {
       message.warning('Cannot delete the last floor.');
       return;
     }
+    const floorToDelete = floors.find((f) => f.id === floorId);
+    const hasFloorEntities =
+      (floorToDelete?.boundary?.points?.length ?? 0) > 0 ||
+      (floorToDelete?.zones?.length ?? 0) > 0 ||
+      (floorToDelete?.standaloneSlots?.length ?? 0) > 0 ||
+      (floorToDelete?.laneNodes?.length ?? 0) > 0 ||
+      (floorToDelete?.laneEdges?.length ?? 0) > 0 ||
+      (floorToDelete?.entrances?.length ?? 0) > 0 ||
+      (floorToDelete?.exits?.length ?? 0) > 0;
+
+    if (hasFloorEntities) {
+      message.warning('Cannot delete this floor because it still contains map entities.');
+      return;
+    }
+
     Modal.confirm({
       title: 'Confirm Deletion',
       content: 'Are you sure you want to delete this floor? All data will be lost.',
-      onOk: () => {
-        const newFloors = floors.filter((f) => f.id !== floorId);
-        setFloors(newFloors);
-        if (activeFloorId === floorId) {
-          setActiveFloorId(newFloors[0].id);
+      okText: 'Delete',
+      cancelText: 'Cancel',
+      onOk: async () => {
+        try {
+          if (!floorToDelete) return;
+
+          if (!floorId?.startsWith('floor-')) {
+            await axiosClient.delete(PARKING_API.DELETE_FLOOR, {
+              data: {
+                parkingCode: parkingCode?.trim(),
+                items: [{ code: floorToDelete.id?.trim?.() || floorToDelete.id }],
+              },
+            });
+          }
+
+          const newFloors = floors.filter((f) => f.id !== floorId);
+          setFloors(newFloors);
+          setFloorDbStatuses((prev) => {
+            const next = { ...prev };
+            delete next[floorId];
+            return next;
+          });
+
+          if (activeFloorId === floorId && newFloors.length > 0) {
+            setActiveFloorId(newFloors[0].id);
+          }
+
+          message.success(`Deleted floor ${floorToDelete.name || floorId} successfully.`);
+        } catch (error) {
+          console.error('Delete floor error:', error);
+          message.error('Failed to delete floor.');
+          throw error;
         }
       },
     });
@@ -554,6 +596,19 @@ const ParkingMapEditor = () => {
   };
 
   const handleClearBoundary = () => {
+    const hasOtherEntities =
+      zones.length > 0 ||
+      standaloneSlots.length > 0 ||
+      laneNodes.length > 0 ||
+      laneEdges.length > 0 ||
+      entrances.length > 0 ||
+      exits.length > 0;
+
+    if (hasOtherEntities) {
+      message.warning('Cannot clear boundary while this floor still contains other entities.');
+      return;
+    }
+
     Modal.confirm({
       title: 'Clear Boundary',
       content: 'Are you sure you want to clear the boundary?',
@@ -1376,6 +1431,14 @@ const ParkingMapEditor = () => {
             onUndoBoundary={handleUndoBoundary}
             hasBoundary={boundary.points.length > 0}
             isBoundaryClosed={boundary.closed}
+            canClearBoundary={
+              zones.length === 0 &&
+              standaloneSlots.length === 0 &&
+              laneNodes.length === 0 &&
+              laneEdges.length === 0 &&
+              entrances.length === 0 &&
+              exits.length === 0
+            }
             onStartDrawZone={handleStartDrawZone}
             onFinishDrawZone={handleFinishZone}
             onCancelDrawZone={handleCancelDrawZone}

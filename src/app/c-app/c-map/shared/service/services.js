@@ -32,15 +32,6 @@ const ParkingService = {
     return axiosClient.post(PARKING_API.UPDATE_FLOOR, data);
   },
 
-  deleteFloor(parkingCode, items) {
-    return axiosClient.post(PARKING_API.DELETE_FLOOR, {
-      parkingCode,
-      items,
-    });
-  },
-
-
-
   saveParking(data) {
     return axiosClient.post(PARKING_API.UPDATE, data);
   },
@@ -52,7 +43,7 @@ const ParkingService = {
   },
 
   deleteParking(items) {
-    return axiosClient.delete(PARKING_API.DELETE, {
+    return axiosClient.delete(PARKING_API.DELETE_SLOT, {
       data: {
         items,
       },

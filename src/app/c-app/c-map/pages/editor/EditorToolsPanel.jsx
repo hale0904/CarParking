@@ -25,6 +25,7 @@ const EditorToolsPanel = ({
     onUndoBoundary,
     hasBoundary,
     isBoundaryClosed,
+    canClearBoundary = false,
     onStartDrawZone,
     onFinishDrawZone,
     onCancelDrawZone,
@@ -206,14 +207,22 @@ const EditorToolsPanel = ({
                             {editorMode === 'EDIT_BOUNDARY' ? "Stop Editing" : "Edit Boundary"}
                         </Button>
 
-                        {/* <Button
-                            block
-                            danger
-                            disabled={interactionLocked}
-                            onClick={onClearBoundary}
+                        <Tooltip
+                            title={
+                                canClearBoundary
+                                    ? 'Delete this boundary'
+                                    : 'Boundary can only be deleted when the floor has no other entities'
+                            }
                         >
-                            Clear Boundary
-                        </Button> */}
+                            <Button
+                                block
+                                danger
+                                disabled={interactionLocked || !canClearBoundary}
+                                onClick={onClearBoundary}
+                            >
+                                Clear Boundary
+                            </Button>
+                        </Tooltip>
                     </>
                 )}
 
