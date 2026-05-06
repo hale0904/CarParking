@@ -122,7 +122,7 @@ const EditorToolsPanel = ({
                         icon={<CarOutlined />}
                     />
                 </div>
-                <div style={{ padding: '0 8px' }}>
+                {/* <div style={{ padding: '0 8px' }}>
                     <Tooltip title="Delete all slot groups & slots on this floor">
                         <Button
                             danger
@@ -134,7 +134,7 @@ const EditorToolsPanel = ({
                             Clear All Slots
                         </Button>
                     </Tooltip>
-                </div>
+                </div> */}
             </div>
 
             <Divider />
@@ -206,14 +206,14 @@ const EditorToolsPanel = ({
                             {editorMode === 'EDIT_BOUNDARY' ? "Stop Editing" : "Edit Boundary"}
                         </Button>
 
-                        <Button
+                        {/* <Button
                             block
                             danger
                             disabled={interactionLocked}
                             onClick={onClearBoundary}
                         >
                             Clear Boundary
-                        </Button>
+                        </Button> */}
                     </>
                 )}
 

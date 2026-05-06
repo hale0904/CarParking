@@ -81,8 +81,11 @@ const EditorPropertiesPanel = ({
     }
 
     if (selectedType === 'ZONE') {
-      if (![0, 2].includes(selectedData?.status)) {
-        return 'Zone can only be deleted when its status is Editing or Inactive.';
+      if (![0, 2].includes(selectedData?.dbStatus)) {
+        if ([0, 2].includes(selectedData?.status)) {
+          return 'You changed the zone status but have not saved the map yet. Please save the map first to persist the Editing/Inactive state before deleting.';
+        }
+        return 'Zone can only be deleted after the Editing/Inactive state is saved to the database.';
       }
     }
 
@@ -93,7 +96,7 @@ const EditorPropertiesPanel = ({
     (selectedType === 'SLOT' &&
       selectedData?.dbStatus === 'inactive' &&
       !selectedData?.sensorCode) ||
-    (selectedType === 'ZONE' && [0, 2].includes(selectedData?.status)) ||
+    (selectedType === 'ZONE' && [0, 2].includes(selectedData?.dbStatus)) ||
     !['SLOT', 'ZONE'].includes(selectedType);
 
   return (

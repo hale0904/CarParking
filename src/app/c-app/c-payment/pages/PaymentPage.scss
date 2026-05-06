@@ -1,0 +1,23 @@
+.payment-session-table {
+  min-height: 420px;
+
+  .ant-spin-nested-loading,
+  .ant-spin-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ant-table {
+    table-layout: fixed;
+    flex: 1;
+  }
+
+  .ant-table-container {
+    min-height: 320px;
+  }
+
+  .ant-pagination {
+    margin-top: auto;
+  }
+}

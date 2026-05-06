@@ -28,6 +28,7 @@ import {
 import axiosClient from '../../../c-lib/axios/axiosClient.service';
 import { PAYMENT_API } from '../../../c-lib/api';
 import { useAdminI18n } from '../../../c-lib/i18n/adminI18n';
+import './PaymentPage.scss';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -404,11 +405,12 @@ const PaymentPage = () => {
               </Space>
 
               <Table
+                className="payment-session-table"
                 rowKey="_rowKey"
                 columns={columns}
                 dataSource={filteredSessions}
                 loading={qrLoading}
-                pagination={{ pageSize: 8, showSizeChanger: false }}
+                pagination={{ pageSize: 5, showSizeChanger: false }}
                 locale={{ emptyText: t('payment.noQrData') }}
                 style={{ marginTop: 20 }}
                 onRow={(record) => ({

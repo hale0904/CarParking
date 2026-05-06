@@ -276,6 +276,7 @@ const ParkingMapEditor = () => {
               id: zone.code,
               name: zone.nameZone,
               status: zone.status !== undefined ? zone.status : 1,
+              dbStatus: zone.status !== undefined ? zone.status : 1,
               color: zone.color || '#3b82f6',
               points: zone.points,
               slotGroups: (zone.groupSlots || []).map((group) => ({
@@ -1237,6 +1238,21 @@ const ParkingMapEditor = () => {
         },
       });
       return;
+    }
+
+    if (type === 'ZONE') {
+      if (![0, 2].includes(selectedData?.dbStatus)) {
+        if ([0, 2].includes(selectedData?.status)) {
+          message.warning(
+            'Bạn vừa đổi trạng thái zone nhưng chưa Save Map. Hãy Save Map trước để xác nhận trạng thái Editing/Inactive trên DB, sau đó mới có thể xóa.',
+          );
+        } else {
+          message.warning(
+            'Chỉ có thể xóa zone khi trạng thái Editing hoặc Inactive đã được lưu trên DB.',
+          );
+        }
+        return;
+      }
     }
 
     if (type === 'LANE_NODE') {
