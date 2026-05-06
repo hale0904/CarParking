@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
   Card,
@@ -7,9 +7,9 @@ import {
   Drawer,
   Empty,
   Image,
-  Input,
   List,
   Row,
+  Select,
   Space,
   Statistic,
   Table,
@@ -23,7 +23,6 @@ import {
   DollarCircleOutlined,
   QrcodeOutlined,
   ReloadOutlined,
-  SearchOutlined,
 } from '@ant-design/icons';
 import axiosClient from '../../../c-lib/axios/axiosClient.service';
 import { PAYMENT_API } from '../../../c-lib/api';
@@ -43,13 +42,6 @@ const getQrUrl = (item) =>
   item?.url ||
   item?.link ||
   item?.image;
-
-const getSessionCode = (item, index) =>
-  item?.code ||
-  item?.sessionCode ||
-  item?.parkingSessionCode ||
-  item?._id ||
-  `Session-${index + 1}`;
 
 const getPaymentContent = (item) =>
   item?.qrPayment?.content || item?.transaction?.paymentCode || item?.transaction?.code || '--';
@@ -83,16 +75,28 @@ const statusColorMap = {
   PENDING: 'gold',
   FAILED: 'red',
   EXPIRED: 'volcano',
+  UNPAID: 'default',
+  ONGOING: 'blue',
 };
+
+const PAYMENT_STATUS_OPTIONS = [
+  { value: 'ALL', label: 'All Status' },
+  { value: 'PAID', label: 'PAID' },
+  { value: 'UNPAID', label: 'UNPAID' },
+];
+
+const BACKGROUND_REFRESH_MS = 15000;
 
 const PaymentPage = () => {
   const { t, language } = useAdminI18n();
   const [qrSessions, setQrSessions] = useState([]);
   const [qrLoading, setQrLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [verifyLoadingKey, setVerifyLoadingKey] = useState(null);
-  const [filterText, setFilterText] = useState('');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('ALL');
   const [selectedSession, setSelectedSession] = useState(null);
   const [activityLog, setActivityLog] = useState([]);
+  const isFetchingRef = useRef(false);
 
   const updateSessionLocally = (session, resultSession) => {
     if (!resultSession) return;
@@ -142,8 +146,16 @@ const PaymentPage = () => {
     );
   };
 
-  const fetchQrSessions = async () => {
-    setQrLoading(true);
+  const fetchQrSessions = async ({ showLoading = false } = {}) => {
+    if (isFetchingRef.current) return;
+
+    isFetchingRef.current = true;
+    if (showLoading) {
+      setQrLoading(true);
+    } else {
+      setRefreshing(true);
+    }
+
     try {
       const response = await axiosClient.post(PAYMENT_API.GET_GUEST_PARKING_SESSIONS_WITH_QR, {});
       const sessions = getSessionList(response?.data || response).map((item, index) => ({
@@ -152,12 +164,19 @@ const PaymentPage = () => {
       }));
       setQrSessions(sessions);
       setSelectedSession((prev) =>
-        prev ? sessions.find((item) => item._rowKey === prev._rowKey) || prev : sessions[0] || null,
+        prev ? sessions.find((item) => item._rowKey === prev._rowKey) || null : null,
       );
     } catch (error) {
-      message.error(error?.response?.data?.message || error?.message || t('payment.loadQrFailed'));
+      if (showLoading) {
+        message.error(error?.response?.data?.message || error?.message || t('payment.loadQrFailed'));
+      }
     } finally {
-      setQrLoading(false);
+      if (showLoading) {
+        setQrLoading(false);
+      } else {
+        setRefreshing(false);
+      }
+      isFetchingRef.current = false;
     }
   };
 
@@ -217,24 +236,31 @@ const PaymentPage = () => {
   };
 
   useEffect(() => {
-    fetchQrSessions();
+    fetchQrSessions({ showLoading: true });
+  }, []);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchQrSessions();
+      }
+    }, BACKGROUND_REFRESH_MS);
+
+    return () => clearInterval(intervalId);
   }, []);
 
   const filteredSessions = useMemo(() => {
-    const keyword = filterText.trim().toLowerCase();
-    if (!keyword) return qrSessions;
+    return qrSessions.filter((item) => {
+      const matchesPaymentStatus =
+        paymentStatusFilter === 'ALL' || item?.statusPaymentName === paymentStatusFilter;
 
-    return qrSessions.filter((item, index) => {
-      const code = getSessionCode(item, index).toLowerCase();
-      const transactionCode = String(
-        item?.transaction?.code || item?.transaction?.paymentCode || '',
-      ).toLowerCase();
-      const qrContent = String(item?.qrPayment?.content || '').toLowerCase();
-      return (
-        code.includes(keyword) || transactionCode.includes(keyword) || qrContent.includes(keyword)
-      );
+      if (!matchesPaymentStatus) {
+        return false;
+      }
+
+      return true;
     });
-  }, [filterText, qrSessions]);
+  }, [paymentStatusFilter, qrSessions]);
 
   const paidSessions = useMemo(
     () => qrSessions.filter((item) => item?.statusPaymentName === 'PAID').length,
@@ -293,6 +319,7 @@ const PaymentPage = () => {
       width: 150,
       render: (_, record) => {
         const loadingKey = record?._rowKey || record?._id || getPaymentContent(record);
+        const canVerify = record?.statusPaymentName !== 'PAID';
         return (
           <Space>
             <Button
@@ -304,17 +331,19 @@ const PaymentPage = () => {
             >
               {t('payment.openDetails')}
             </Button>
-            <Button
-              type="primary"
-              size="small"
-              onClick={(event) => {
-                event.stopPropagation();
-                verifyPayment(record);
-              }}
-              loading={verifyLoadingKey === loadingKey}
-            >
-              {t('payment.verifyPayment')}
-            </Button>
+            {canVerify && (
+              <Button
+                type="primary"
+                size="small"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  verifyPayment(record);
+                }}
+                loading={verifyLoadingKey === loadingKey}
+              >
+                {t('payment.verifyPayment')}
+              </Button>
+            )}
           </Space>
         );
       },
@@ -339,8 +368,8 @@ const PaymentPage = () => {
             <Space wrap style={{ width: '100%', justifyContent: 'flex-end' }}>
               <Button
                 icon={<ReloadOutlined />}
-                onClick={fetchQrSessions}
-                loading={qrLoading}
+                onClick={() => fetchQrSessions({ showLoading: true })}
+                loading={qrLoading || refreshing}
                 size="large"
               >
                 {t('payment.refreshQrList')}
@@ -392,16 +421,12 @@ const PaymentPage = () => {
                 <Title level={5} style={{ margin: 0 }}>
                   {t('payment.listView')}
                 </Title>
-                {/* <Space direction="vertical" size={6} style={{ width: 360, maxWidth: '100%' }}>
-                  <Input
-                    allowClear
-                    prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
-                    placeholder={t('payment.searchPlaceholder')}
-                    value={filterText}
-                    onChange={(e) => setFilterText(e.target.value)}
-                    style={{ width: '100%' }}
-                  />
-                </Space> */}
+                <Select
+                  value={paymentStatusFilter}
+                  onChange={setPaymentStatusFilter}
+                  options={PAYMENT_STATUS_OPTIONS}
+                  style={{ width: 180, maxWidth: '100%' }}
+                />
               </Space>
 
               <Table
@@ -497,14 +522,16 @@ const PaymentPage = () => {
                     {selectedPaymentContent}
                   </Tag>
                   <Space wrap style={{ justifyContent: 'center' }}>
-                    <Button
-                      type="primary"
-                      icon={<CheckCircleOutlined />}
-                      onClick={() => verifyPayment(selectedSession)}
-                      loading={verifyLoadingKey === selectedLoadingKey}
-                    >
-                      {t('payment.verifyPayment')}
-                    </Button>
+                    {selectedSession?.statusPaymentName !== 'PAID' && (
+                      <Button
+                        type="primary"
+                        icon={<CheckCircleOutlined />}
+                        onClick={() => verifyPayment(selectedSession)}
+                        loading={verifyLoadingKey === selectedLoadingKey}
+                      >
+                        {t('payment.verifyPayment')}
+                      </Button>
+                    )}
                     <Button type="link" href={selectedQrUrl} target="_blank">
                       {t('payment.viewQrImage')}
                     </Button>
