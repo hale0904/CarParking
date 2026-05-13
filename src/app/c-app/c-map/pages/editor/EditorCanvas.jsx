@@ -128,10 +128,12 @@ const EditorCanvas = ({
   const transformerRef = useRef(null);
   const [pointerPos, setPointerPos] = React.useState(null);
   const hudRef = useRef(null);
+  const hasAutoCenteredRef = useRef(false);
   const [stageSize, setStageSize] = useState({
     width: DEFAULT_STAGE_WIDTH,
     height: DEFAULT_STAGE_HEIGHT,
   });
+  const [isStageSizeReady, setIsStageSizeReady] = useState(false);
 
   const updateHUD = () => {
     if (!stageRef.current || !hudRef.current) return;
@@ -196,6 +198,7 @@ const EditorCanvas = ({
           ? prev
           : { width: nextWidth, height: nextHeight },
       );
+      setIsStageSizeReady(true);
     };
 
     updateStageSize();
@@ -213,6 +216,8 @@ const EditorCanvas = ({
 
   useEffect(() => {
     if (!readOnly || !stageRef.current) return;
+    if (!isStageSizeReady) return;
+    if (hasAutoCenteredRef.current) return;
 
     const bounds = computeContentBounds({
       boundary,
@@ -248,6 +253,7 @@ const EditorCanvas = ({
     setScale((prevScale) => (Math.abs(prevScale - nextScale) > 0.001 ? nextScale : prevScale));
     stage.position(nextPosition);
     updateHUD();
+    hasAutoCenteredRef.current = true;
   }, [
     readOnly,
     boundary,
@@ -258,6 +264,7 @@ const EditorCanvas = ({
     exits,
     setScale,
     stageSize,
+    isStageSizeReady,
   ]);
 
   const handleWheel = (e) => {
@@ -548,28 +555,6 @@ const EditorCanvas = ({
             listening={false}
           />
         )}
-      </Group>
-    );
-  };
-
-  const renderScaleBar = () => {
-    const niceValues = [1, 2, 5, 10, 25, 50, 100, 200, 500];
-    const pixelsPerMeter = (GRID_SIZE / gridRealSize) * scale;
-    const targetMeters = 100 / pixelsPerMeter;
-    const niceMeter = niceValues.find((v) => v >= targetMeters) || 500;
-    const barPixels = niceMeter * pixelsPerMeter; // actual pixel width on screen
-
-    return (
-      <Group x={20} y={Math.max(20, stageSize.height - 40)}>
-        <Line points={[0, 0, 0, 8, barPixels, 8, barPixels, 0]} stroke="#374151" strokeWidth={2} />
-        <Text
-          text={`${niceMeter}${parkingUnit}`}
-          x={barPixels + 10}
-          y={-2}
-          fontSize={12}
-          fill="#374151"
-          fontStyle="bold"
-        />
       </Group>
     );
   };
@@ -906,11 +891,6 @@ const EditorCanvas = ({
               enabledAnchors={['middle-left', 'middle-right']}
               rotateEnabled={true}
             />
-          </Layer>
-
-          {/* HUD Layer that is inversely transformed to stay fixed to view */}
-          <Layer ref={hudRef} listening={false}>
-            {renderScaleBar()}
           </Layer>
         </Stage>
       </div>

@@ -89,6 +89,8 @@ const EXPORT_FORMAT_CONFIG = {
   },
 };
 
+const SOCKET_UPDATE_GUARD_MS = 15_000;
+
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 
 const safeNumber = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
@@ -268,6 +270,95 @@ const mapFloorData = (floor) => ({
   })),
 });
 
+const buildMapPayload = (item) => {
+  if (!item) return null;
+
+  const zoneOptions = (item.floors || []).flatMap((floor) =>
+    (floor.zones || []).map((zone) => ({
+      label: zone.nameZone || zone.code || zone._id,
+      value: zone._id,
+    })),
+  );
+
+  return {
+    zoneOptions,
+    mapData: {
+      metadata: { gridRealSize: 2.5, unit: 'm' },
+      parking: {
+        floors: (item.floors || []).filter((f) => f.status === 1).map(mapFloorData),
+      },
+    },
+  };
+};
+
+const collectSlotStatuses = (mapData) =>
+  (mapData?.parking?.floors || []).flatMap((floor) =>
+    (floor.zones || []).flatMap((zone) =>
+      (zone.slotGroups || []).flatMap((group) =>
+        (group.slots || []).map((slot) => ({
+          id: slot.id?.toString(),
+          status: slot.status,
+        })),
+      ),
+    ),
+  );
+
+const hasReservedStatusChange = (currentMapData, nextMapData) => {
+  const currentSlots = collectSlotStatuses(currentMapData);
+  const nextSlots = collectSlotStatuses(nextMapData);
+  const currentStatusById = new Map(currentSlots.map((slot) => [slot.id, slot.status]));
+
+  return nextSlots.some((slot) => {
+    if (!slot.id) return false;
+    const previousStatus = currentStatusById.get(slot.id);
+    return slot.status === 'reserved' && previousStatus !== 'reserved';
+  });
+};
+
+const mergePollingMapWithRecentSocketUpdates = (currentMapData, nextMapData, recentSocketUpdates) => {
+  if (!currentMapData || !nextMapData) return nextMapData;
+
+  return {
+    ...nextMapData,
+    parking: {
+      ...nextMapData.parking,
+      floors: nextMapData.parking.floors.map((floor, floorIndex) => {
+        const currentFloor = currentMapData.parking?.floors?.[floorIndex];
+        return {
+          ...floor,
+          zones: floor.zones.map((zone, zoneIndex) => {
+            const currentZone = currentFloor?.zones?.[zoneIndex];
+            return {
+              ...zone,
+              slotGroups: zone.slotGroups.map((group, groupIndex) => {
+                const currentGroup = currentZone?.slotGroups?.[groupIndex];
+                return {
+                  ...group,
+                  slots: group.slots.map((slot, slotIndex) => {
+                    const currentSlot = currentGroup?.slots?.[slotIndex];
+                    const slotId = slot.id?.toString();
+                    const recentSocketUpdate = slotId ? recentSocketUpdates.get(slotId) : null;
+
+                    if (
+                      recentSocketUpdate &&
+                      recentSocketUpdate.status !== 'reserved' &&
+                      slot.status !== 'reserved'
+                    ) {
+                      return { ...slot, status: recentSocketUpdate.status };
+                    }
+
+                    return currentSlot ? { ...slot } : slot;
+                  }),
+                };
+              }),
+            };
+          }),
+        };
+      }),
+    },
+  };
+};
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 const FloorMapView = ({ floor, metadata }) => {
@@ -311,6 +402,7 @@ const FloorMapView = ({ floor, metadata }) => {
 const DashboardPage = () => {
   const { t, language } = useAdminI18n();
   const socketRef = useRef(null);
+  const recentSocketUpdatesRef = useRef(new Map());
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [isLoading, setIsLoading] = useState(true);
@@ -343,20 +435,11 @@ const DashboardPage = () => {
         const list = res?.data || res;
         if (!list?.length) return;
 
-        const item = list[0];
-        const zonesFromMap = (item.floors || []).flatMap((floor) =>
-          (floor.zones || []).map((zone) => ({
-            label: zone.nameZone || zone.code || zone._id,
-            value: zone._id,
-          })),
-        );
-        setZoneOptions(zonesFromMap);
-        setMapData({
-          metadata: { gridRealSize: 2.5, unit: 'm' },
-          parking: {
-            floors: (item.floors || []).filter((f) => f.status === 1).map(mapFloorData),
-          },
-        });
+        const nextMapPayload = buildMapPayload(list[0]);
+        if (!nextMapPayload) return;
+
+        setZoneOptions(nextMapPayload.zoneOptions);
+        setMapData(nextMapPayload.mapData);
       } catch (err) {
         message.error(t('dashboard.failedToLoadMap', { message: err.message }));
       } finally {
@@ -365,6 +448,48 @@ const DashboardPage = () => {
     };
 
     fetchMap();
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncMapPolling = async () => {
+      try {
+        const res = await axiosClient.post(PARKING_API.GET_LIST, {});
+        const list = res?.data || res;
+        if (!isMounted || !list?.length) return;
+
+        const nextMapPayload = buildMapPayload(list[0]);
+        if (!nextMapPayload) return;
+
+        setZoneOptions(nextMapPayload.zoneOptions);
+        const now = Date.now();
+        recentSocketUpdatesRef.current.forEach((value, key) => {
+          if (now - value.timestamp > SOCKET_UPDATE_GUARD_MS) {
+            recentSocketUpdatesRef.current.delete(key);
+          }
+        });
+
+        setMapData((prev) => {
+          if (!hasReservedStatusChange(prev, nextMapPayload.mapData)) return prev;
+
+          return mergePollingMapWithRecentSocketUpdates(
+            prev,
+            nextMapPayload.mapData,
+            recentSocketUpdatesRef.current,
+          );
+        });
+      } catch {
+        // Keep realtime socket active even if periodic map sync fails.
+      }
+    };
+
+    const intervalId = setInterval(syncMapPolling, 10_000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
   }, []);
 
   // ── Effects: statistics ────────────────────────────────────────────────────
@@ -535,6 +660,14 @@ const DashboardPage = () => {
     socket.on('connect_error', () => setSocketConnected(false));
 
     socket.on('slot:update', ({ slotId, slotStatus }) => {
+      const normalizedStatus = SLOT_STATUS_MAP[slotStatus];
+      if (slotId && normalizedStatus) {
+        recentSocketUpdatesRef.current.set(slotId.toString(), {
+          status: normalizedStatus,
+          timestamp: Date.now(),
+        });
+      }
+
       setMapData((prev) => {
         if (!prev) return prev;
         return {
@@ -549,7 +682,7 @@ const DashboardPage = () => {
                   ...group,
                   slots: group.slots.map((slot) =>
                     slot.id?.toString() === slotId
-                      ? { ...slot, status: SLOT_STATUS_MAP[slotStatus] ?? slot.status }
+                      ? { ...slot, status: normalizedStatus ?? slot.status }
                       : slot,
                   ),
                 })),
