@@ -61,7 +61,7 @@ export function buildZonePrefixMap(zones) {
 }
 
 export function getNextSlotIndexInZone(zone, prefix) {
-  const used = new Set();
+  let maxUsed = 0;
 
   if (zone && zone.slotGroups) {
     for (const group of zone.slotGroups) {
@@ -73,18 +73,14 @@ export function getNextSlotIndexInZone(zone, prefix) {
           const remaining = slot.code.substring(prefix.length);
           const match = remaining.match(/^(\d+)/);
           if (match) {
-            used.add(parseInt(match[1], 10));
+            maxUsed = Math.max(maxUsed, parseInt(match[1], 10));
           }
         }
       }
     }
   }
 
-  let next = 1;
-  while (used.has(next)) {
-    next++;
-  }
-  return next;
+  return maxUsed + 1;
 }
 
 export function generateSlotsWithZonePrefix(count, zonePrefix, startIndex) {

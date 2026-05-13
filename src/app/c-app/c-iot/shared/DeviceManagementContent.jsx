@@ -55,6 +55,37 @@ const getSlotLabel = (slotValue) => {
   return String(slotValue);
 };
 
+const translateApiErrorMessage = (message) => {
+  if (!message) return '';
+
+  const normalizedMessage = String(message).trim();
+  const messageMap = {
+    'Khong the xoa thiet bi dang gan slot: SS005':
+      'Cannot delete device because it is assigned to slot: SS005',
+  };
+
+  if (messageMap[normalizedMessage]) {
+    return messageMap[normalizedMessage];
+  }
+
+  if (/^Khong the xoa thiet bi dang gan slot:\s*/i.test(normalizedMessage)) {
+    return normalizedMessage.replace(
+      /^Khong the xoa thiet bi dang gan slot:\s*/i,
+      'Cannot delete device because it is assigned to slot: ',
+    );
+  }
+
+  return normalizedMessage;
+};
+
+const getErrorDescription = (error, fallbackMessage) =>
+  translateApiErrorMessage(
+    error?.response?.data?.message ||
+      error?.response?.data?.error ||
+      error?.message ||
+      fallbackMessage,
+  );
+
 const DeviceFormModal = ({
   open,
   mode,
@@ -190,7 +221,12 @@ const DeleteConfirmModal = ({ open, device, onClose, onDelete, confirmLoading, c
   );
 };
 
-const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboard', pageConfig, apiConfig }) => {
+const DeviceManagementContent = ({
+  categoryCode,
+  fallbackPath = '/admin/dashboard',
+  pageConfig,
+  apiConfig,
+}) => {
   const { t } = useAdminI18n();
   const [devices, setDevices] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -204,9 +240,14 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
   const [editingDevice, setEditingDevice] = useState(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deletingDevice, setDeletingDevice] = useState(null);
+  const [pagination, setPagination] = useState({
+    current: 1,
+    pageSize: 5,
+  });
 
   const getDeviceStatus = pageConfig.getDeviceStatus || getStatus;
-  const getDeviceCategoryCode = pageConfig.getDeviceCategoryCode || ((device) => device.categoryId?.code);
+  const getDeviceCategoryCode =
+    pageConfig.getDeviceCategoryCode || ((device) => device.categoryId?.code);
   const getSearchableText =
     pageConfig.getSearchableText ||
     ((device) => {
@@ -247,7 +288,7 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
     } catch (error) {
       notification.error({
         message: t('iot.errorFetchingCategories'),
-        description: error.message,
+        description: getErrorDescription(error, t('common.unknownError')),
       });
     } finally {
       setCategoriesLoaded(true);
@@ -269,7 +310,7 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
     } catch (error) {
       notification.error({
         message: t('iot.errorFetchingDevices'),
-        description: error.message,
+        description: getErrorDescription(error, t('common.unknownError')),
       });
     } finally {
       setLoading(false);
@@ -321,6 +362,25 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
     };
   }, [categoryDevices, getDeviceStatus]);
 
+  useEffect(() => {
+    setPagination((prev) => ({ ...prev, current: 1 }));
+  }, [searchText, statusFilter, categoryCode]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(filteredDevices.length / pagination.pageSize));
+
+    setPagination((prev) => {
+      if (prev.current <= totalPages) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        current: totalPages,
+      };
+    });
+  }, [filteredDevices.length, pagination.pageSize]);
+
   const openAddModal = () => {
     setFormMode('add');
     setEditingDevice(null);
@@ -336,7 +396,8 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
   const handleFormSubmit = async (values) => {
     setFormLoading(true);
     try {
-      const payload = formMode === 'add' ? buildCreatePayload(values) : buildUpdatePayload(editingDevice, values);
+      const payload =
+        formMode === 'add' ? buildCreatePayload(values) : buildUpdatePayload(editingDevice, values);
       const response = await axiosClient.post(apiConfig.UPDATE, payload);
       if (response?.success) {
         notification.success({
@@ -354,7 +415,7 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
     } catch (error) {
       notification.error({
         message: t('iot.actionFailed'),
-        description: error.message,
+        description: getErrorDescription(error, t('common.unknownError')),
       });
     } finally {
       setFormLoading(false);
@@ -381,7 +442,7 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
     } catch (error) {
       notification.error({
         message: t('iot.deleteFailed'),
-        description: error.message,
+        description: getErrorDescription(error, t('common.unknownError')),
       });
     } finally {
       setFormLoading(false);
@@ -398,18 +459,18 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
     },
     pageConfig.showLinkedSlot
       ? {
-        title: t('iot.linkedSlot'),
-        dataIndex: 'slotId',
-        key: 'slotId',
-        render: (slotId) => {
-          if (!slotId) return <Text type="secondary">-</Text>;
-          const label =
-            typeof slotId === 'object'
-              ? slotId?.nameSlot || slotId?.code || String(slotId._id)
-              : slotId;
-          return <Tag color="green">{label}</Tag>;
-        },
-      }
+          title: t('iot.linkedSlot'),
+          dataIndex: 'slotId',
+          key: 'slotId',
+          render: (slotId) => {
+            if (!slotId) return <Text type="secondary">-</Text>;
+            const label =
+              typeof slotId === 'object'
+                ? slotId?.nameSlot || slotId?.code || String(slotId._id)
+                : slotId;
+            return <Tag color="green">{label}</Tag>;
+          },
+        }
       : null,
     {
       title: t('common.status'),
@@ -425,7 +486,11 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
           Online: { color: 'success', icon: <WifiOutlined />, label: t('common.online') },
           Offline: { color: 'error', icon: <DisconnectOutlined />, label: t('common.offline') },
         };
-        const config = translatedStatusConfig[status] || { color: 'default', label: status, icon: null };
+        const config = translatedStatusConfig[status] || {
+          color: 'default',
+          label: status,
+          icon: null,
+        };
         return (
           <Badge
             status={config.color}
@@ -472,20 +537,67 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
 
   return (
     <div style={{ padding: 24, background: '#fff', minHeight: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, gap: 12, flexWrap: 'wrap' }}>
+      <style>
+        {`
+          .iot-device-table .ant-pagination {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+          }
+
+          .iot-device-table .ant-pagination-item,
+          .iot-device-table .ant-pagination-prev,
+          .iot-device-table .ant-pagination-next {
+            min-width: 40px;
+            width: 40px;
+            height: 40px;
+            margin-inline: 0;
+            flex: 0 0 40px;
+          }
+
+          .iot-device-table .ant-pagination-item a,
+          .iot-device-table .ant-pagination-prev button,
+          .iot-device-table .ant-pagination-next button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+          }
+
+          .iot-device-table .ant-pagination-total-text {
+            margin-inline-end: 12px;
+            white-space: nowrap;
+          }
+        `}
+      </style>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          marginBottom: 24,
+          gap: 12,
+          flexWrap: 'wrap',
+        }}
+      >
         <div>
           <Title level={2} style={{ margin: 0 }}>
             {pageConfig.title}
           </Title>
-          <Text type="secondary">
-            {pageConfig.description}
-          </Text>
+          <Text type="secondary">{pageConfig.description}</Text>
         </div>
         <Space>
           <Button onClick={fetchDevices} loading={loading} icon={<ReloadOutlined />}>
             {t('common.refresh')}
           </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal} disabled={!selectedCategory}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={openAddModal}
+            disabled={!selectedCategory}
+          >
             {t('iot.addEntity', { entity: pageConfig.entityName })}
           </Button>
         </Space>
@@ -499,22 +611,35 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
           </Card>
         </Col>
         <Col xs={12} sm={6} md={4}>
-          <Card size="small" style={{ textAlign: 'center', borderColor: '#b7eb8f', background: '#f6ffed' }}>
+          <Card
+            size="small"
+            style={{ textAlign: 'center', borderColor: '#b7eb8f', background: '#f6ffed' }}
+          >
             <div style={{ fontSize: 12, color: '#389e0d' }}>{t('common.online')}</div>
             <div style={{ fontSize: 22, fontWeight: 'bold', color: '#52c41a' }}>{stats.online}</div>
           </Card>
         </Col>
         <Col xs={12} sm={6} md={4}>
-          <Card size="small" style={{ textAlign: 'center', borderColor: '#ffa39e', background: '#fff1f0' }}>
+          <Card
+            size="small"
+            style={{ textAlign: 'center', borderColor: '#ffa39e', background: '#fff1f0' }}
+          >
             <div style={{ fontSize: 12, color: '#cf1322' }}>{t('common.offline')}</div>
-            <div style={{ fontSize: 22, fontWeight: 'bold', color: '#f5222d' }}>{stats.offline}</div>
+            <div style={{ fontSize: 22, fontWeight: 'bold', color: '#f5222d' }}>
+              {stats.offline}
+            </div>
           </Card>
         </Col>
         {pageConfig.showUnlinkedStat && (
           <Col xs={12} sm={6} md={4}>
-            <Card size="small" style={{ textAlign: 'center', borderColor: '#91caff', background: '#e6f4ff' }}>
+            <Card
+              size="small"
+              style={{ textAlign: 'center', borderColor: '#91caff', background: '#e6f4ff' }}
+            >
               <div style={{ fontSize: 12, color: '#0958d9' }}>{t('iot.unlinked')}</div>
-              <div style={{ fontSize: 22, fontWeight: 'bold', color: '#1677ff' }}>{stats.unlinked}</div>
+              <div style={{ fontSize: 22, fontWeight: 'bold', color: '#1677ff' }}>
+                {stats.unlinked}
+              </div>
             </Card>
           </Col>
         )}
@@ -550,17 +675,27 @@ const DeviceManagementContent = ({ categoryCode, fallbackPath = '/admin/dashboar
 
       <div style={{ minHeight: '450px' }}>
         <Table
+          className="iot-device-table"
           columns={columns}
           dataSource={filteredDevices}
           rowKey={(record) => record._id || record.code}
           scroll={{ x: 900 }}
           pagination={{
-            pageSize: 5,
+            current: pagination.current,
+            pageSize: pagination.pageSize,
             showSizeChanger: true,
             showTotal: (total) => t('iot.devicesCount', { total }),
+            onChange: (page, pageSize) => {
+              setPagination({
+                current: page,
+                pageSize,
+              });
+            },
           }}
           loading={loading}
-          locale={{ emptyText: t('iot.noEntitiesFound', { entity: pageConfig.entityName.toLowerCase() }) }}
+          locale={{
+            emptyText: t('iot.noEntitiesFound', { entity: pageConfig.entityName.toLowerCase() }),
+          }}
         />
       </div>
 

@@ -180,6 +180,56 @@ const cloneFloorLayoutFromTemplate = (templateFloor) => {
   };
 };
 
+const getNextSlotGroupCodeInZone = (zone) => {
+  const zoneCode = zone?.code || zone?.id || 'ZONE';
+  let maxIndex = 0;
+
+  for (const group of zone?.slotGroups || []) {
+    const code = String(group?.code || '').trim();
+    if (!code) continue;
+
+    const match = code.match(/-GS(\d+)$/i);
+    if (match) {
+      maxIndex = Math.max(maxIndex, parseInt(match[1], 10));
+    }
+  }
+
+  return `${zoneCode}-GS${maxIndex + 1}`;
+};
+
+const buildZoneGroupCodes = (zone) => {
+  const zoneCode = zone?.code || zone?.id || 'ZONE';
+  const usedCodes = new Set();
+  let maxIndex = 0;
+
+  for (const group of zone?.slotGroups || []) {
+    const code = String(group?.code || '').trim();
+    if (!code) continue;
+
+    usedCodes.add(code);
+    const match = code.match(/-GS(\d+)$/i);
+    if (match) {
+      maxIndex = Math.max(maxIndex, parseInt(match[1], 10));
+    }
+  }
+
+  return (zone?.slotGroups || []).map((group, index) => {
+    if (group?.code) return group.code;
+
+    let nextIndex = Math.max(maxIndex + 1, index + 1);
+    let nextCode = `${zoneCode}-GS${nextIndex}`;
+
+    while (usedCodes.has(nextCode)) {
+      nextIndex += 1;
+      nextCode = `${zoneCode}-GS${nextIndex}`;
+    }
+
+    usedCodes.add(nextCode);
+    maxIndex = Math.max(maxIndex, nextIndex);
+    return nextCode;
+  });
+};
+
 const ParkingMapEditor = () => {
   const { language } = useAdminI18n();
   const { saveMap } = useParkingMapStorage();
@@ -853,8 +903,10 @@ const ParkingMapEditor = () => {
         const prefixMap = buildZonePrefixMap(zones);
         const zonePrefix = prefixMap[targetZone.id] || 'S';
         const startIndex = getNextSlotIndexInZone(targetZone, zonePrefix);
+        const nextGroupCode = getNextSlotGroupCodeInZone(targetZone);
         const newGroup = {
           id: `sg-${Date.now()}`,
+          code: nextGroupCode,
           name: 'New Group',
           rotation: 0,
           x: x,
@@ -1060,41 +1112,48 @@ const ParkingMapEditor = () => {
                   points: floor.boundary.points,
                   closed: floor.boundary.closed,
                 },
-                zones: floor.zones.map((zone, zi) => ({
-                  code: zone.id || `Z${String(zi + 1).padStart(3, '0')}`,
-                  nameZone: zone.name,
-                  status: zone.status ?? 0,
-                  color: zone.color || '#3b82f6',
-                  points: zone.points,
-                  groupSlots: (zone.slotGroups || []).map((group, gi) => ({
-                    code: group.code || `${zone.id}-GS${gi + 1}`,
-                    nameGroupSlot: group.name || `Row ${gi + 1}`,
-                    status: group.status ?? 0,
-                    color: group.color || zone.color || '#3b82f6',
-                    positionX: group.x,
-                    positionY: group.y,
-                    rotation: group.rotation ?? 0,
-                    direction: group.direction,
-                    width: group.width,
-                    height: group.height,
-                    availableSlots: group.slots.filter((s) => s.status === 'available').length,
-                    occupiedSlots: group.slots.filter((s) => s.status === 'occupied').length,
-                    reservedSlots: group.slots.filter((s) => s.status === 'reserved').length,
-                    slots: group.slots.map((slot, si) => ({
-                      code: slot.code || `${zone.id}-GS${gi + 1}-S${si + 1}`,
-                      nameSlot: slot.code || `${zone.id}-GS${gi + 1}-S${si + 1}`,
-                      sensorCode: slot.sensorCode || null,
-                      status:
-                        slot.status === 'available'
-                          ? 0
-                          : slot.status === 'occupied'
-                            ? 1
-                            : slot.status === 'reserved'
-                              ? 2
-                              : 3,
+                zones: floor.zones.map((zone, zi) => {
+                  const resolvedGroupCodes = buildZoneGroupCodes(zone);
+
+                  return {
+                    code: zone.id || `Z${String(zi + 1).padStart(3, '0')}`,
+                    nameZone: zone.name,
+                    status: zone.status ?? 0,
+                    color: zone.color || '#3b82f6',
+                    points: zone.points,
+                    groupSlots: (zone.slotGroups || []).map((group, gi) => ({
+                      code: resolvedGroupCodes[gi],
+                      nameGroupSlot: group.name || `Row ${gi + 1}`,
+                      status: group.status ?? 0,
+                      color: group.color || zone.color || '#3b82f6',
+                      positionX: group.x,
+                      positionY: group.y,
+                      rotation: group.rotation ?? 0,
+                      direction: group.direction,
+                      width: group.width,
+                      height: group.height,
+                      availableSlots: (group.slots || []).filter((s) => s.status === 'available')
+                        .length,
+                      occupiedSlots: (group.slots || []).filter((s) => s.status === 'occupied')
+                        .length,
+                      reservedSlots: (group.slots || []).filter((s) => s.status === 'reserved')
+                        .length,
+                      slots: (group.slots || []).map((slot, si) => ({
+                        code: slot.code || `${resolvedGroupCodes[gi]}-S${si + 1}`,
+                        nameSlot: slot.code || `${resolvedGroupCodes[gi]}-S${si + 1}`,
+                        sensorCode: slot.sensorCode || null,
+                        status:
+                          slot.status === 'available'
+                            ? 0
+                            : slot.status === 'occupied'
+                              ? 1
+                              : slot.status === 'reserved'
+                                ? 2
+                                : 3,
+                      })),
                     })),
-                  })),
-                })),
+                  };
+                }),
                 entrances: floor.entrances.map((e, i) => ({
                   code: `F${fi + 1}-E${i + 1}`,
                   positionX: e.x,
